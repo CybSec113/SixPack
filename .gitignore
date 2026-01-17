@@ -210,7 +210,6 @@ __marimo__/
 calibrations.json
 calibration.json
 esp_devices.json
-instrument_mapping.json
 
 # ESP-IDF build artifacts
 sdkconfig*

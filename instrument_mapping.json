@@ -1,0 +1,32 @@
+{
+  "instruments": {
+    "ESP_Airspeed": {
+      "esp_id": "ESP_Airspeed",
+      "description": "Airspeed Indicator",
+      "unit": "knots",
+      "motors": {
+        "0": {
+          "dref": "sim/flightmodel/position/indicated_airspeed"
+        }
+      }
+    },
+    "ESP_Gyrocompass": {
+      "esp_id": "ESP_Gyrocompass",
+      "description": "Gyro Compass",
+      "unit": "degrees",
+      "motors": {
+        "0": {
+          "drefs": [
+            "sim/cockpit2/gauges/indicators/heading_vacuum_deg_mag_pilot",
+            "sim/cockpit/gyros/dg_drift_vac_deg"
+          ],
+          "transform": "negate"
+        },
+        "1": {
+          "dref": "sim/cockpit2/autopilot/heading_dial_deg_mag_pilot",
+          "transform": "negate"
+        }
+      }
+    }
+  }
+}
