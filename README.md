@@ -18,8 +18,8 @@ Truth be told, I did not write a single line of code (though I have significant 
 ## Basic Software Components
 
 * **ESP firmware** - written in C and built/flashed with esp-idf tools (link below) - Each ESP has different firmware, depending on which instrument it's controlling.
-* **Web Server** - Intuitively, I knew there would be a need to test, calibrate, and zero the instruments.
-* **Raspberry Pi Hub** - receives/processes/sends UDP packets from xplane / to ESPs (and web_server.py)
+* **Web Server** - (Python) Intuitively, I knew there would be a need to test, calibrate, and zero the instruments.
+* **Raspberry Pi Hub** - (Python) receives/processes/sends UDP packets from xplane / to ESPs (and web_server.py)
 
 
 # Full System Setup
@@ -49,8 +49,10 @@ There are diffent types of ESPs that can be built (e.g., Airspeed, Gyro, etc.), 
 * udpdate the .env file to reflect the which ESP is being built
    
 ```bash
-idf.py menuconfig (update Instrument Config and Network seetings to match ESP build)
-idf.py -D INSTRUMENT=airspeed build (example)
+idf.py --list-targets
+iff.py set-target esp32c3           # or whatever variant you're using
+idf.py menuconfig                   # update Instrument Config and Network seetings to match ESP build
+idf.py -D INSTRUMENT=airspeed build # use actual instrument being built
 idf.py flash monitor
 ```
 
