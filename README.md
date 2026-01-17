@@ -1,19 +1,31 @@
 # SixPack
-x-plane instrument panel implementation.  
-This is very much a work in progress, and I will update as often as possible.
+X-Plane instrument panel implementation using ESP32-C3 controllers and stepper motors.
+This is a work in progress with continuous improvements.
 
 # Requirements
-1. x-plane 11 (may also work on x-plane, but haven't tested it)
-1. Raspberry Pi running headless OS - any variant with standard GPIO pinout and networking.
-1. ESP32-C3 - one for each instrument
-1. 28BYJ-48 stepper motor (usually comes with ULN2003 controller)
-1. Breadboard and/or jumper wires
-1. DC power source (e.g., ToolkitRC P200)
-1. 3-D printer to print the instrument structures and the 6-pack frame
-1. Miscellaneous tool/hardware (e.g., M4, M3 screws, etc.)
+1. X-Plane 11+ (may work on earlier versions)
+2. Raspberry Pi running headless OS (any variant with standard GPIO and networking)
+3. ESP32-C3 - one for each instrument (6 total for full panel)
+4. 28BYJ-48 stepper motor + ULN2003 controller (per motor)
+5. Breadboard and jumper wires
+6. DC power supply (5V for steppers, USB for ESPs)
+7. 3D printer for instrument housings and frame (optional)
+8. Miscellaneous hardware (M3/M4 screws, etc.)
 
-# Software Stucture
-Truth be told, I did not write a single line of code (though I have significant software development experience).  All code written by a variety of AI agents.  Even so, I challenge anyone to prompt AI agents to develop a similar framework.  
+# Software Architecture
+
+All code generated with AI assistance. The system consists of three main components:
+
+## Components
+
+- **ESP Firmware** (C, ESP-IDF): Per-instrument firmware controlling 1-2 stepper motors
+- **RPi Hub** (Python): UDP router for X-Plane data → ESP commands
+- **Web Server** (Python/Flask): Calibration, testing, and device monitoring dashboard
+
+### Data Flow
+```
+X-Plane → RPi Hub → ESPs
+```
 
 ## Basic Software Components
 

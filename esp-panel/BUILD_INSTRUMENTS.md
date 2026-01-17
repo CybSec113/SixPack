@@ -1,108 +1,139 @@
 # Building Firmware for Different Instruments
 
-Each ESP32 requires separate firmware compiled with its instrument-specific calibration data.
+Each ESP32 requires separate firmware compiled with its instrument-specific calibration data and motor configuration.
 
 ## Prerequisites
 
 Ensure ESP-IDF is sourced:
 ```bash
 source <ESP-IDF-PATH>/export.sh
+idf.py set-target esp32c3
 ```
 
 ## Building for Each Instrument
 
-### 1. Airspeed Indicator (ESP_Airspeed)
+All instruments use the same CMakeLists.txt with environment-based configuration:
 
 ```bash
-# Clean previous build
 idf.py fullclean
-
-# Configure for Airspeed
 idf.py menuconfig
-# Navigate to: Instrument Configuration → Select Instrument Type → Airspeed Indicator
-# Also set: Network Configuration → ESP Device ID = "ESP_Airspeed"
-
-# Build and flash
+# Set: Network → WiFi SSID, Password, RPI_IP, ESP_DEVICE_ID
 idf.py build
 idf.py -p /dev/tty.usbmodem13301 flash monitor
 ```
 
-**Calibration:** 0-200 knots linearly mapped to 0-360 degrees
+### Supported Instruments
 
-### 2. Gyro Compass / Heading (ESP_GyroCompass)
+| Instrument | ESP_ID | Motors | Build Command |
+|------------|--------|--------|---------------|
+| Airspeed Indicator | ESP_Airspeed | 1 | `CONFIG_INSTRUMENT_AIRSPEED=y` |
+| Attitude Indicator | ESP_AttitudeIndicator | 2 | `CONFIG_INSTRUMENT_ATTITUDE=y` |
+| Altimeter | ESP_Altitude | 1 | `CONFIG_INSTRUMENT_ALTITUDE=y` |
+| Turn Coordinator | ESP_TurnIndicator | 1 | `CONFIG_INSTRUMENT_TURN=y` |
+| Gyro Compass | ESP_Gyrocompass | 2 | `CONFIG_INSTRUMENT_GYRO_COMPASS=y` |
+| Vertical Speed | ESP_VSI | 1 | `CONFIG_INSTRUMENT_VSI=y` |
+
+## Example: Building Gyrocompass (Dual Motor)
 
 ```bash
-# Clean previous build
+# Clean
 idf.py fullclean
 
-# Configure for Gyro Compass
+# Configure
 idf.py menuconfig
-# Navigate to: Instrument Configuration → Select Instrument Type → Gyro Compass / Heading
-# Also set: Network Configuration → ESP Device ID = "ESP_GyroCompass"
+# Set:
+#   - Instrument Configuration → Gyro Compass / Heading
+#   - WiFi SSID & Password
+#   - RPI IP Address: 192.168.x.x
+#   - ESP Device ID: ESP_Gyrocompass
 
 # Build and flash
 idf.py build
 idf.py -p /dev/tty.usbmodem13301 flash monitor
+
+# In another terminal, monitor WiFi logs:
+python3 receive_logs.py 192.168.x.x 9999
 ```
 
-**Calibration:** 0-360 degrees heading directly mapped to 0-360 degrees motor angle
+## Motor Configuration
+
+Each instrument specifies motor count in `main/Kconfig.projbuild`:
+
+```kconfig
+config INSTRUMENT_GYRO_COMPASS
+    bool "Gyro Compass / Heading (Dual Motor)"
+    help
+        Dual motor: Motor 0 = compass rose, Motor 1 = heading bug
+```
+
+Motors operate concurrently with individual FreeRTOS tasks and queues.
+
+## Calibration Data
+
+Calibration points are hardcoded in source files:
+
+- **airspeed.c**: 40-200 knots → 32-315°
+- **gyrocompass.c**: 0-360° heading → 0-360° motor angle
+- Add more instruments by creating new source files
 
 ## Adding New Instruments
 
-To add a new instrument:
-
-1. **Add Kconfig option** in `main/Kconfig.projbuild`:
-   ```kconfig
-   config INSTRUMENT_YOUR_INSTRUMENT
-       bool "Your Instrument Name"
-       help
-           Description of the instrument
-   ```
-
-2. **Add calibration data** in `main/airspeed.c`:
+1. **Create source file** `main/newinstrument.c` with calibration:
    ```c
-   #elif CONFIG_INSTRUMENT_YOUR_INSTRUMENT
-   static const cal_point_t calibration[10] = {
+   static const cal_point_t calibration[N] = {
        {value1, angle1},
        {value2, angle2},
-       // ... 10 calibration points
+       // ... N points
    };
    ```
 
-3. **Build and flash** following the steps above, selecting your new instrument type.
+2. **Add Kconfig option** in `main/Kconfig.projbuild`:
+   ```kconfig
+   config INSTRUMENT_NEWINSTRUMENT
+       bool "New Instrument Name"
+       help
+           Description
+   ```
 
-## Configuration Settings
+3. **Update CMakeLists.txt** `main/CMakeLists.txt`:
+   ```cmake
+   elseif(CONFIG_INSTRUMENT_NEWINSTRUMENT)
+       list(APPEND SRCS "newinstrument.c")
+   endif()
+   ```
 
-### WiFi Configuration
-- SSID and password for RPi network connection
+4. **Build** with new instrument selected in menuconfig
 
-### Network Configuration
-- **RPI_IP_ADDRESS**: IP address of Raspberry Pi hub
-- **ESP_DEVICE_ID**: Unique identifier matching `instrument_mapping.json`
+## WiFi Logging
 
-### Instrument Configuration
-- **Select Instrument Type**: Choose the instrument for this ESP
-
-## Debugging
-
-Monitor serial output to verify:
-- WiFi connection
-- Heartbeat messages sent to RPi
-- VALUE commands received and converted
-- Motor angle calculations
+Logs stream to TCP immediately after WiFi connects:
 
 ```bash
-idf.py monitor
-# Press Ctrl+] to exit
+# Gyrocompass logs (port 9999)
+python3 receive_logs.py 192.168.x.x 9999
+
+# Airspeed logs (port 9998)
+python3 receive_logs.py 192.168.x.x 9998
 ```
 
-## Build Artifacts
+Serial monitor also works via `idf.py monitor`.
+
+## Build Output
 
 After successful build:
-- Binary: `build/esp-panel.bin`
-- ELF: `build/esp-panel.elf`
+- Binary: `build/esp-panel-*.bin`
+- ELF: `build/esp-panel-*.elf`
 
-These can be flashed to other ESP32 devices with identical configurations using:
+Flash to other devices:
 ```bash
-esptool.py -p <PORT> write_flash 0x0 build/esp-panel.bin
+esptool.py -p <PORT> write_flash 0x0 build/esp-panel-*.bin
 ```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| WiFi connection fails | Check SSID/password in menuconfig |
+| No heartbeats received | Verify RPI_IP and network connectivity |
+| Motors don't move | Check UDP port 49003 connectivity, verify calibration |
+| WiFi logs not streaming | Ensure logs enabled in menuconfig, connect with `receive_logs.py` |
