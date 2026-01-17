@@ -1,0 +1,2 @@
+rpi-lgpio>=0.6
+Flask>=2.0.0

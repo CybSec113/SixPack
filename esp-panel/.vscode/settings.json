@@ -1,0 +1,20 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPath": "/Users/jnn/Documents/Devel/esp-idf",
+  "idf.pythonInstallPath": "/Users/jnn/.pyenv/shims/python",
+  "idf.openOcdConfigs": [
+    "board/esp32c3-builtin.cfg"
+  ],
+  "idf.port": "/dev/tty.usbmodem13301",
+  "idf.toolsPath": "/Users/jnn/.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32c3"
+  },
+  "clangd.path": "/Users/jnn/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=/Users/jnn/Documents/Devel/SixPack/esp-panel/build"
+  ],
+  "idf.flashType": "JTAG"
+}

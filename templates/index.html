@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SixPack Panel Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #1e1e1e; color: #fff; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { margin-bottom: 30px; }
+        
+        .device-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .device-item {
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .device-item:hover { background: #333; border-color: #0066cc; }
+        .xplane-item {
+            background: linear-gradient(135deg, #1a3a1a 0%, #2d2d2d 100%);
+            border: 2px solid #00aa00;
+            grid-column: 1 / -1;
+        }
+        .xplane-item:hover { background: linear-gradient(135deg, #226622 0%, #333 100%); border-color: #00ff00; }
+        .device-name { font-size: 20px; font-weight: bold; margin-bottom: 10px; }
+        .device-info { font-size: 12px; color: #aaa; margin: 5px 0; }
+        .xplane-item .device-info { color: #00cc00; }
+        
+        .calibration-page { display: none; }
+        .calibration-page.active { display: block; }
+        .back-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .back-btn:hover { background: #555; }
+        
+        .cal-card {
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 900px;
+        }
+        .cal-header { font-size: 18px; font-weight: bold; margin-bottom: 20px; }
+        .cal-info { font-size: 12px; color: #aaa; margin-bottom: 15px; }
+        
+        .controls {
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .motor-section { 
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        .motor-section h3 { margin-bottom: 15px; color: #0066cc; }
+        .gauge-container { position: relative; width: 200px; height: 200px; margin: 0 auto 15px; }
+        .gauge-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; font-weight: bold; }
+        
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        input[type="range"] { flex: 1; }
+        input[type="number"] { width: 60px; padding: 5px; background: #1e1e1e; border: 1px solid #444; color: #fff; }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        button:hover { background: #0052a3; }
+        
+        .motor-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        
+        .calibration {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .cal-title { font-weight: bold; margin-bottom: 10px; }
+        .cal-point {
+            display: flex;
+            gap: 5px;
+            margin: 8px 0;
+            align-items: center;
+        }
+        .cal-point input { flex: 1; padding: 4px; background: #2d2d2d; border: 1px solid #444; color: #fff; }
+        .cal-point button { padding: 4px 8px; background: #aa0000; }
+        .cal-point button:hover { background: #cc0000; }
+        .add-point-btn { margin-top: 10px; width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Landing Page -->
+        <div id="landing-page">
+            <h1>SixPack Panel Monitor</h1>
+            <div class="device-list" id="device-list"></div>
+        </div>
+
+        <!-- Calibration Page -->
+        <div id="calibration-page" class="calibration-page">
+            <button class="back-btn" onclick="goBack()">← Back</button>
+            <div class="cal-card">
+                <div class="cal-header" id="cal-device-name"></div>
+                <div class="cal-info">IP: <span id="cal-device-ip"></span></div>
+                <div class="cal-info">Last seen: <span id="cal-device-lastseen"></span></div>
+                <div class="cal-info">Uptime: <span id="cal-device-uptime"></span>s</div>
+                
+                <div class="controls" id="motor-controls">
+                    <!-- Motor sections will be dynamically inserted here -->
+                </div>
+                
+                <div class="calibration">
+                    <div class="cal-title">Calibration Points</div>
+                    <div id="cal-points"></div>
+                    <button class="add-point-btn" onclick="addCalibrationPoint()">+ Add Point</button>
+                    <button onclick="saveCalibration()" style="margin-top: 10px; width: 100%;">Save Calibration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function drawGauge(canvasId, angle) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const centerX = 100, centerY = 100, radius = 90;
+            
+            ctx.clearRect(0, 0, 200, 200);
+            
+            ctx.strokeStyle = '#0066cc';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 360; i += 30) {
+                const rad = (i - 90) * Math.PI / 180;
+                const x1 = centerX + (radius - 10) * Math.cos(rad);
+                const y1 = centerY + (radius - 10) * Math.sin(rad);
+                const x2 = centerX + radius * Math.cos(rad);
+                const y2 = centerY + radius * Math.sin(rad);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+            
+            const needleRad = (angle - 90) * Math.PI / 180;
+            const needleX = centerX + (radius - 20) * Math.cos(needleRad);
+            const needleY = centerY + (radius - 20) * Math.sin(needleRad);
+            ctx.strokeStyle = '#ff6600';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(needleX, needleY);
+            ctx.stroke();
+            
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        let currentDevice = null;
+        let calibrationPoints = [];
+
+        function updateDeviceList() {
+            fetch('/api/devices')
+                .then(r => r.json())
+                .then(devices => {
+                    const html = devices.map(d => {
+                        if (d.is_xplane) {
+                            return `
+                                <div class="device-item xplane-item" onclick="selectDevice('${d.id}')">
+                                    <div class="device-name">${d.id} 🛩️</div>
+                                    <div class="device-info">Data source for X-Plane</div>
+                                    <div class="device-info">Total DREF messages: ${d.xplane_messages || 0}</div>
+                                </div>
+                            `;
+                        } else {
+                            return `
+                                <div class="device-item" onclick="selectDevice('${d.id}')">
+                                    <div class="device-name">${d.id}</div>
+                                    <div class="device-info">IP: ${d.ip}</div>
+                                    <div class="device-info">Last seen: ${d.last_seen}</div>
+                                    <div class="device-info">Uptime: ${d.uptime}s</div>
+                                    <div class="device-info">X-Plane messages: ${d.xplane_messages || 0}</div>
+                                </div>
+                            `;
+                        }
+                    }).join('');
+                    document.getElementById('device-list').innerHTML = html;
+                });
+        }
+
+        function selectDevice(espId) {
+            currentDevice = espId;
+            
+            // Don't allow calibration edit for X-Plane
+            if (espId === 'X-Plane') {
+                fetch('/api/devices')
+                    .then(r => r.json())
+                    .then(devices => {
+                        const device = devices.find(d => d.id === espId);
+                        if (device) {
+                            document.getElementById('cal-device-name').textContent = '🛩️ ' + device.id;
+                            document.getElementById('cal-device-ip').textContent = 'Network data source';
+                            document.getElementById('cal-device-lastseen').textContent = 'Real-time';
+                            document.getElementById('cal-device-uptime').textContent = 'Active';
+                            
+                            // Hide motor controls and calibration for X-Plane
+                            document.querySelector('.controls').style.display = 'none';
+                            document.querySelector('.calibration').style.display = 'none';
+                            
+                            document.getElementById('landing-page').style.display = 'none';
+                            document.getElementById('calibration-page').classList.add('active');
+                        }
+                    });
+                return;
+            }
+            
+            fetch('/api/devices')
+                .then(r => r.json())
+                .then(devices => {
+                    const device = devices.find(d => d.id === espId);
+                    if (device) {
+                        document.getElementById('cal-device-name').textContent = device.id;
+                        document.getElementById('cal-device-ip').textContent = device.ip;
+                        document.getElementById('cal-device-lastseen').textContent = device.last_seen;
+                        document.getElementById('cal-device-uptime').textContent = device.uptime;
+                        
+                        // Fetch instrument type to determine motor count
+                        fetch(`/api/device-info/${espId}`)
+                            .then(r => r.json())
+                            .then(info => {
+                                console.log(`Device info for ${espId}:`, info);
+                                renderMotorControls(espId, info.motor_count || 1);
+                            })
+                            .catch(err => {
+                                console.error(`Failed to fetch device info for ${espId}:`, err);
+                                // Default to 1 motor if endpoint not available
+                                renderMotorControls(espId, 1);
+                            });
+                        
+                        document.querySelector('.calibration').style.display = 'block';
+                        
+                        fetch(`/api/calibration/${espId}`)
+                            .then(r => r.json())
+                            .then(cal => {
+                                calibrationPoints = cal.points || [];
+                                renderCalibrationPoints();
+                            });
+                        
+                        document.getElementById('landing-page').style.display = 'none';
+                        document.getElementById('calibration-page').classList.add('active');
+                    }
+                });
+        }
+
+        function renderMotorControls(espId, motorCount) {
+            const controlsDiv = document.getElementById('motor-controls');
+            let html = '';
+            
+            for (let m = 0; m < motorCount; m++) {
+                const motorNum = m + 1;
+                html += `
+                    <div class="motor-section">
+                        <h3>Motor ${motorNum}</h3>
+                        <div class="gauge-container">
+                            <canvas id="gauge-motor-${m}" width="200" height="200"></canvas>
+                            <div class="gauge-value" id="gauge-value-motor-${m}">0°</div>
+                        </div>
+                        <div class="slider-group">
+                            <label>Angle:</label>
+                            <input type="range" min="0" max="360" value="0" id="cal-slider-motor-${m}">
+                            <input type="number" id="cal-angle-motor-${m}" value="0" min="0" max="360">
+                        </div>
+                        <div class="slider-group" style="font-size: 11px;">
+                            <label>Min:</label>
+                            <input type="number" id="cal-min-motor-${m}" value="0" style="width: 50px;">
+                            <label>Max:</label>
+                            <input type="number" id="cal-max-motor-${m}" value="360" style="width: 50px;">
+                        </div>
+                        <div class="motor-buttons">
+                            <button onclick="moveMotor(${m})">Move</button>
+                            <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
+                            <button onclick="rotateCCW(${m})" style="background: #aa0000;">CCW 10°</button>
+                            <button onclick="zeroMotor(${m})" style="background: #666;">Zero</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            controlsDiv.innerHTML = html;
+            
+            // Re-attach event listeners for all motors
+            for (let m = 0; m < motorCount; m++) {
+                const slider = document.getElementById(`cal-slider-motor-${m}`);
+                const input = document.getElementById(`cal-angle-motor-${m}`);
+                const valueDisplay = document.getElementById(`gauge-value-motor-${m}`);
+                
+                if (slider && input) {
+                    slider.oninput = () => {
+                        input.value = slider.value;
+                        valueDisplay.textContent = slider.value + '°';
+                        drawGauge(`gauge-motor-${m}`, parseFloat(slider.value));
+                    };
+                    input.oninput = () => {
+                        slider.value = input.value;
+                        valueDisplay.textContent = input.value + '°';
+                        drawGauge(`gauge-motor-${m}`, parseFloat(input.value));
+                    };
+                    
+                    drawGauge(`gauge-motor-${m}`, 0);
+                }
+            }
+        }
+
+        function renderCalibrationPoints() {
+            const html = calibrationPoints.map((p, i) => `
+                <div class="cal-point">
+                    <input type="number" placeholder="Value" value="${p.value}" onchange="calibrationPoints[${i}].value = parseInt(this.value)">
+                    <input type="number" placeholder="Angle" value="${p.angle}" onchange="calibrationPoints[${i}].angle = parseInt(this.value)">
+                    <button onclick="deleteCalibrationPoint(${i})">Delete</button>
+                </div>
+            `).join('');
+            document.getElementById('cal-points').innerHTML = html;
+        }
+
+        function addCalibrationPoint() {
+            calibrationPoints.push({value: 0, angle: 0});
+            renderCalibrationPoints();
+        }
+
+        function deleteCalibrationPoint(idx) {
+            calibrationPoints.splice(idx, 1);
+            renderCalibrationPoints();
+        }
+
+        function goBack() {
+            currentDevice = null;
+            document.getElementById('landing-page').style.display = 'block';
+            document.getElementById('calibration-page').classList.remove('active');
+            updateDeviceList();
+        }
+
+        function moveMotor(motorId = 0) {
+            const angle = parseFloat(document.getElementById(`cal-angle-motor-${motorId}`).value);
+            fetch('/api/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: angle, min_angle: 0, max_angle: 360 })
+            });
+        }
+
+        function rotateCW(motorId) {
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            let angle = parseFloat(input.value) + 10;
+            if (angle > 360) angle = 360;
+            input.value = angle;
+            input.oninput();
+            moveMotor(motorId);
+        }
+
+        function rotateCCW(motorId) {
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            let angle = parseFloat(input.value) - 10;
+            if (angle < 0) angle = 0;
+            input.value = angle;
+            input.oninput();
+            moveMotor(motorId);
+        }
+
+        function zeroMotor(motorId) {
+            fetch('/api/zero', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId })
+            });
+            const slider = document.getElementById(`cal-slider-motor-${motorId}`);
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            const valueDisplay = document.getElementById(`gauge-value-motor-${motorId}`);
+            slider.value = 0;
+            input.value = 0;
+            valueDisplay.textContent = '0°';
+            drawGauge(`gauge-motor-${motorId}`, 0);
+        }
+
+        function saveCalibration() {
+            const cal = {
+                points: calibrationPoints,
+                motor1: {
+                    min: 0,
+                    max: 360
+                }
+            };
+            fetch(`/api/calibration/${currentDevice}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cal)
+            });
+        }
+
+        updateDeviceList();
+        setInterval(updateDeviceList, 2000);
+    </script></body></html>

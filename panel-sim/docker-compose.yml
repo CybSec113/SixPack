@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  xplane-sim:
+    build:
+      context: ..
+      dockerfile: ./panel-sim/xplane-sim/Dockerfile
+    container_name: xplane-sim
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+    networks:
+      - panel-net
+    command: sleep infinity
+
+  pi-dispatcher:
+    build:
+      context: ..
+      dockerfile: ./panel-sim/pi-dispatcher/Dockerfile
+    container_name: pi-dispatcher
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+    networks:
+      - panel-net
+    ports:
+      - "49001:49001/udp"
+    command: sleep infinity
+
+  esp-sim:
+    build:
+      context: ..
+      dockerfile: ./panel-sim/esp-sim/Dockerfile
+    container_name: esp-sim
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+    networks:
+      - panel-net
+    command: sleep infinity
+
+networks:
+  panel-net:
+    driver: bridge

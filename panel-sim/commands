@@ -1,0 +1,13 @@
+docker compose build
+docker compose up -d
+
+docker ps
+docker network ls
+docker network inspect panel-sim_panel-net
+
+docker exec -it <xplane-sim, pi-dispatcher, esp-sim> bash
+
+nc -u -l 49001
+echo "hello" | nc -u pi-dispatcher 49001
+
+docker compose down

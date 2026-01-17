@@ -1,0 +1,8 @@
+{
+    "idf.port": "/dev/tty.usbmodem13301",
+    "idf.openOcdConfigs": [
+        "board/esp32c3-builtin.cfg"
+    ],
+    "idf.monitorPort": "/dev/tty.usbmodem13301",
+    "idf.pythonInstallPath": "/Users/jnn/.pyenv/shims/python"
+}

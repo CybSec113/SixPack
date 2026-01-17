@@ -1,0 +1,54 @@
+menu "WiFi Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "<your WiFi SSID>"
+        help
+            WiFi network name
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "<your WiFi password>"
+        help
+            WiFi network password
+
+endmenu
+
+menu "Network Configuration"
+
+    config RPI_IP_ADDRESS
+        string "RPi IP Address"
+        default "<your RPi IP address>"
+        help
+            IP address of the Raspberry Pi dispatcher
+
+    config ESP_DEVICE_ID
+        string "ESP Device ID"
+        default "ESP_Gyrocompass"
+        help
+            Unique identifier for this ESP32 device
+
+endmenu
+
+menu "Instrument Configuration"
+
+    choice INSTRUMENT_TYPE
+        prompt "Select Instrument Type"
+        default INSTRUMENT_AIRSPEED
+        help
+            Choose which instrument this ESP will control
+
+        config INSTRUMENT_AIRSPEED
+            bool "Airspeed Indicator"
+            help
+                0-200 knots analog indicator
+
+        config INSTRUMENT_GYRO_COMPASS
+            bool "Gyro Compass / Heading"
+            help
+                0-360 degree heading indicator
+
+    endchoice
+
+endmenu
+
