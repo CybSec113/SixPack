@@ -149,12 +149,9 @@ def get_devices():
                 'calibration': calibrations.get(esp_id, {}),
                 'xplane_messages': xplane_counters.get(esp_id, 0),
                 'is_xplane': False,
-                'online': True
+                'online': True,
+                'encoders': encoder_events if esp_id == 'ESP_Inputs' else {}
             }
-            
-            # Add encoder data for Inputs ESP
-            if esp_id == 'ESP_Inputs':
-                device_data['encoders'] = encoder_events
             
             devices.append(device_data)
         else:
@@ -167,12 +164,9 @@ def get_devices():
                 'calibration': calibrations.get(esp_id, {}),
                 'xplane_messages': 0,
                 'is_xplane': False,
-                'online': False
+                'online': False,
+                'encoders': encoder_events if esp_id == 'ESP_Inputs' else {}
             }
-            
-            # Still include empty encoder data for offline Inputs
-            if esp_id == 'ESP_Inputs':
-                device_data['encoders'] = {}
             
             devices.append(device_data)
     

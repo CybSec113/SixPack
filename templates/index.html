@@ -269,15 +269,9 @@
                     // Update encoder display if currently viewing Inputs
                     if (currentDevice && currentDevice !== 'X-Plane') {
                         const device = devices.find(d => d.id === currentDevice);
-                        if (device) {
-                            fetch(`/api/device-info/${currentDevice}`)
-                                .then(r => r.json())
-                                .then(info => {
-                                    if (info.motor_count === 0) {
-                                        renderEncoderDisplay(device);
-                                    }
-                                })
-                                .catch(() => {});
+                        if (device && device.encoders && Object.keys(device.encoders).length > 0) {
+                            console.log('Updating encoder display:', device.encoders);
+                            renderEncoderDisplay(device);
                         }
                     }
                 });
@@ -525,5 +519,5 @@
         }
 
         updateDeviceList();
-        setInterval(updateDeviceList, 2000);
+        setInterval(updateDeviceList, 1000);  // Update every 1 second for Inputs
     </script></body></html>
