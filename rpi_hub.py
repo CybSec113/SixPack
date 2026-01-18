@@ -275,6 +275,8 @@ def encoder_listener():
         try:
             data, addr = sock.recvfrom(1024)
             msg = data.decode()
+            print(f"[DEBUG] Received raw message: {msg}")  # Debug
+            
             if msg.startswith("ENCODER:"):
                 parts = msg.split(":")
                 if len(parts) >= 4:
@@ -284,20 +286,20 @@ def encoder_listener():
                     
                     print(f"[ENCODER] {encoder_name}: value={value}, btn={button}")
                     
-                    # Map encoder to X-Plane DREF and send
-                    if encoder_name == "EC11_HdgBug":
-                        # Send heading bug adjustment to X-Plane
-                        # This could increment/decrement autopilot heading bug
-                        print(f"  → X-Plane: Heading Bug adjustment {value}")
-                    
                     # Notify web_server for UI updates
                     try:
                         import requests
-                        requests.post('http://localhost:5000/api/encoder_event',
-                                     json={'encoder': encoder_name, 'value': value, 'button': button},
-                                     timeout=1)
-                    except:
-                        pass
+                        payload = {'encoder': encoder_name, 'value': value, 'button': button}
+                        print(f"[DEBUG] Sending to web_server: {payload}")  # Debug
+                        
+                        response = requests.post('http://localhost:5000/api/encoder_event',
+                                     json=payload,
+                                     timeout=2)
+                        print(f"[DEBUG] Web server response: {response.status_code}")  # Debug
+                    except Exception as e:
+                        print(f"[ERROR] Failed to notify web_server: {e}")
+            else:
+                print(f"[ERROR] Unknown encoder message format: {msg}")
         except Exception as e:
             print(f"Encoder listener error: {e}")
 
