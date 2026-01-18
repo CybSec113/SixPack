@@ -21,6 +21,7 @@ esp_devices = {}
 calibrations = {}
 xplane_counters = {}
 instrument_mapping = {}
+encoder_events = {}  # New: Store latest encoder events
 
 # Instrument metadata
 INSTRUMENT_METADATA = {
@@ -140,7 +141,7 @@ def get_devices():
             seconds = int(elapsed % 60)
             last_seen_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             
-            devices.append({
+            device_data = {
                 'id': esp_id,
                 'ip': info.get('ip', '?'),
                 'uptime': uptime_str,
@@ -149,10 +150,16 @@ def get_devices():
                 'xplane_messages': xplane_counters.get(esp_id, 0),
                 'is_xplane': False,
                 'online': True
-            })
+            }
+            
+            # Add encoder data for Inputs ESP
+            if esp_id == 'ESP_Inputs':
+                device_data['encoders'] = encoder_events
+            
+            devices.append(device_data)
         else:
             # Instrument is offline
-            devices.append({
+            device_data = {
                 'id': esp_id,
                 'ip': '?',
                 'uptime': '?',
@@ -161,7 +168,13 @@ def get_devices():
                 'xplane_messages': 0,
                 'is_xplane': False,
                 'online': False
-            })
+            }
+            
+            # Still include empty encoder data for offline Inputs
+            if esp_id == 'ESP_Inputs':
+                device_data['encoders'] = {}
+            
+            devices.append(device_data)
     
     return jsonify(devices)
 
@@ -269,6 +282,24 @@ def delete_calibration_point(esp_id, idx):
             save_calibrations()
             return jsonify({'status': 'ok'})
     return jsonify({'status': 'error'}), 404
+
+@app.route('/api/encoder_event', methods=['POST'])
+def encoder_event():
+    """Receive encoder events from Inputs ESP via rpi_hub"""
+    data = request.json
+    encoder_name = data.get('encoder')
+    value = data.get('value')
+    button = data.get('button')
+    
+    if encoder_name:
+        encoder_events[encoder_name] = {
+            'value': value,
+            'button': button,
+            'timestamp': time.time()
+        }
+        print(f"[ENCODER] {encoder_name}: value={value}, button={button}")
+    
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     import logging
