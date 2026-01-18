@@ -150,7 +150,7 @@ def get_devices():
                 'xplane_messages': xplane_counters.get(esp_id, 0),
                 'is_xplane': False,
                 'online': True,
-                'encoders': encoder_events if esp_id == 'ESP_Inputs' else {}
+                'encoders': encoder_events.copy() if esp_id == 'ESP_Inputs' else {}
             }
             
             devices.append(device_data)
@@ -165,7 +165,7 @@ def get_devices():
                 'xplane_messages': 0,
                 'is_xplane': False,
                 'online': False,
-                'encoders': encoder_events if esp_id == 'ESP_Inputs' else {}
+                'encoders': encoder_events.copy() if esp_id == 'ESP_Inputs' else {}
             }
             
             devices.append(device_data)
@@ -290,6 +290,7 @@ def delete_calibration_point(esp_id, idx):
 @app.route('/api/encoder_event', methods=['POST'])
 def encoder_event():
     """Receive encoder events from Inputs ESP via rpi_hub"""
+    global encoder_events
     data = request.json
     encoder_name = data.get('encoder')
     value = data.get('value')
@@ -302,6 +303,7 @@ def encoder_event():
             'timestamp': time.time()
         }
         print(f"[ENCODER] {encoder_name}: value={value}, button={button}")
+        print(f"[DEBUG] encoder_events now: {encoder_events}")  # Debug
     
     return jsonify({'status': 'ok'})
 
