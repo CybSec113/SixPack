@@ -22,9 +22,9 @@ static const char *TAG = "inputs";
 #define LOG_BUFFER_SIZE 1024
 
 // EC11 Encoder configurations
-#define EC11_HDG_BUG_CLK   3
-#define EC11_HDG_BUG_DT    4
-#define EC11_HDG_BUG_BTN   5
+#define EC11_HDG_BUG_CLK   2    // GPIO 2 = CLK / Output A
+#define EC11_HDG_BUG_DT    3    // GPIO 3 = DT / Output B
+#define EC11_HDG_BUG_BTN   4    // GPIO 4 = SW / Switch
 
 typedef struct {
     const char *name;
@@ -207,9 +207,28 @@ static void heartbeat_task(void *pvParameters)
     }
 }
 
+#define ENCODER_PORT   49004  // New: Send encoder events to rpi_hub
+
 static void encoder_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "Encoder task started, monitoring %d encoders", encoder_count);
+    
+    struct sockaddr_in rpi_addr;
+    rpi_addr.sin_addr.s_addr = inet_addr((const char *)RPI_IP);
+    rpi_addr.sin_family = AF_INET;
+    rpi_addr.sin_port = htons(ENCODER_PORT);
+    
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Unable to create encoder socket");
+        vTaskDelete(NULL);
+        return;
+    }
+    
+    int last_button_state[encoder_count];
+    for (int i = 0; i < encoder_count; i++) {
+        last_button_state[i] = 0;
+    }
     
     while (1) {
         for (int i = 0; i < encoder_count; i++) {
@@ -226,10 +245,41 @@ static void encoder_task(void *pvParameters)
                     encoders[i].value--;
                 }
                 
-                ESP_LOGI(TAG, "%s: value=%d, btn=%s", 
+                // Send encoder event to rpi_hub
+                char encoder_msg[64];
+                snprintf(encoder_msg, sizeof(encoder_msg), "ENCODER:%s:%d:%s", 
                     encoders[i].name, 
                     encoders[i].value, 
                     btn_state ? "PRESSED" : "released");
+                
+                int ret = sendto(sock, encoder_msg, strlen(encoder_msg), 0, 
+                               (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
+                
+                if (ret < 0) {
+                    ESP_LOGW(TAG, "Encoder send failed: errno %d", errno);
+                } else {
+                    ESP_LOGI(TAG, "Sent: %s", encoder_msg);
+                }
+            }
+            
+            // Send button state change
+            if (btn_state != last_button_state[i]) {
+                char encoder_msg[64];
+                snprintf(encoder_msg, sizeof(encoder_msg), "ENCODER:%s:%d:%s", 
+                    encoders[i].name, 
+                    encoders[i].value, 
+                    btn_state ? "PRESSED" : "released");
+                
+                int ret = sendto(sock, encoder_msg, strlen(encoder_msg), 0, 
+                               (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
+                
+                if (ret < 0) {
+                    ESP_LOGW(TAG, "Button state send failed: errno %d", errno);
+                } else {
+                    ESP_LOGI(TAG, "Button: %s", encoder_msg);
+                }
+                
+                last_button_state[i] = btn_state;
             }
             
             encoders[i].last_clk_state = clk_state;
@@ -238,6 +288,8 @@ static void encoder_task(void *pvParameters)
         
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    
+    close(sock);
 }
 
 void app_main(void)

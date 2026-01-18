@@ -258,11 +258,19 @@
                             .then(r => r.json())
                             .then(info => {
                                 console.log(`Device info for ${espId}:`, info);
-                                renderMotorControls(espId, info.motor_count || 1);
+                                
+                                // Hide controls for Inputs ESP (no motors)
+                                if (info.motor_count === 0) {
+                                    document.querySelector('.controls').style.display = 'none';
+                                    document.querySelector('.calibration').style.display = 'none';
+                                } else {
+                                    document.querySelector('.controls').style.display = 'grid';
+                                    document.querySelector('.calibration').style.display = 'block';
+                                    renderMotorControls(espId, info.motor_count || 1);
+                                }
                             })
                             .catch(err => {
                                 console.error(`Failed to fetch device info for ${espId}:`, err);
-                                // Default to 1 motor if endpoint not available
                                 renderMotorControls(espId, 1);
                             });
                         
