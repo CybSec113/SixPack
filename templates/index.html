@@ -107,6 +107,53 @@
         .cal-point button { padding: 4px 8px; background: #aa0000; }
         .cal-point button:hover { background: #cc0000; }
         .add-point-btn { margin-top: 10px; width: 100%; }
+        
+        .encoder-display {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 20px;
+            margin-top: 15px;
+            display: none;
+        }
+        .encoder-display.active {
+            display: block;
+        }
+        .encoder-item {
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .encoder-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+        .encoder-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00aa00;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        .encoder-button {
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            display: inline-block;
+            font-weight: bold;
+        }
+        .encoder-button.pressed {
+            background: #aa0000;
+            color: white;
+        }
+        .encoder-button.released {
+            background: #333;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -128,6 +175,10 @@
                 
                 <div class="controls" id="motor-controls">
                     <!-- Motor sections will be dynamically inserted here -->
+                </div>
+                
+                <div class="encoder-display" id="encoder-display">
+                    <!-- Encoder values will be displayed here -->
                 </div>
                 
                 <div class="calibration">
@@ -214,6 +265,21 @@
                         }
                     }).join('');
                     document.getElementById('device-list').innerHTML = html;
+                    
+                    // Update encoder display if currently viewing Inputs
+                    if (currentDevice && currentDevice !== 'X-Plane') {
+                        const device = devices.find(d => d.id === currentDevice);
+                        if (device) {
+                            fetch(`/api/device-info/${currentDevice}`)
+                                .then(r => r.json())
+                                .then(info => {
+                                    if (info.motor_count === 0) {
+                                        renderEncoderDisplay(device);
+                                    }
+                                })
+                                .catch(() => {});
+                        }
+                    }
                 });
         }
 
@@ -259,13 +325,18 @@
                             .then(info => {
                                 console.log(`Device info for ${espId}:`, info);
                                 
-                                // Hide controls for Inputs ESP (no motors)
+                                // Handle Inputs ESP (no motors)
                                 if (info.motor_count === 0) {
                                     document.querySelector('.controls').style.display = 'none';
                                     document.querySelector('.calibration').style.display = 'none';
+                                    document.getElementById('encoder-display').classList.add('active');
+                                    
+                                    // Display encoder values
+                                    renderEncoderDisplay(device);
                                 } else {
                                     document.querySelector('.controls').style.display = 'grid';
                                     document.querySelector('.calibration').style.display = 'block';
+                                    document.getElementById('encoder-display').classList.remove('active');
                                     renderMotorControls(espId, info.motor_count || 1);
                                 }
                             })
@@ -273,8 +344,6 @@
                                 console.error(`Failed to fetch device info for ${espId}:`, err);
                                 renderMotorControls(espId, 1);
                             });
-                        
-                        document.querySelector('.calibration').style.display = 'block';
                         
                         fetch(`/api/calibration/${espId}`)
                             .then(r => r.json())
@@ -287,6 +356,28 @@
                         document.getElementById('calibration-page').classList.add('active');
                     }
                 });
+        }
+
+        function renderEncoderDisplay(device) {
+            const encoders = device.encoders || {};
+            let html = '';
+            
+            if (Object.keys(encoders).length === 0) {
+                html = '<div style="color: #aaa; padding: 20px; text-align: center;">No encoder data received yet...</div>';
+            } else {
+                for (const [name, data] of Object.entries(encoders)) {
+                    const buttonClass = data.button === 'PRESSED' ? 'pressed' : 'released';
+                    html += `
+                        <div class="encoder-item">
+                            <div class="encoder-name">${name}</div>
+                            <div class="encoder-value">Value: ${data.value}</div>
+                            <div class="encoder-button ${buttonClass}">Button: ${data.button}</div>
+                        </div>
+                    `;
+                }
+            }
+            
+            document.getElementById('encoder-display').innerHTML = html;
         }
 
         function renderMotorControls(espId, motorCount) {
