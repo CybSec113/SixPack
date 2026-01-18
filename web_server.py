@@ -30,6 +30,7 @@ INSTRUMENT_METADATA = {
     'ESP_TurnIndicator': {'motor_count': 1, 'type': 'turn'},
     'ESP_Gyrocompass': {'motor_count': 2, 'type': 'heading'},
     'ESP_VSI': {'motor_count': 1, 'type': 'vsi'},
+    'ESP_Inputs': {'motor_count': 0, 'type': 'inputs'},
 }
 
 def load_devices():
@@ -110,7 +111,7 @@ def get_devices():
         'xplane_messages': xplane_total_messages
     })
     
-    # Define instrument order: top row, then bottom row
+    # Define instrument order: top row, then bottom row, then inputs
     instrument_order = [
         'ESP_Airspeed',
         'ESP_AttitudeIndicator',
@@ -118,6 +119,7 @@ def get_devices():
         'ESP_TurnIndicator',
         'ESP_Gyrocompass',
         'ESP_VSI',
+        'ESP_Inputs',
     ]
     
     # Add all instruments in order (online or offline)

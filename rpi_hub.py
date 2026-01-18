@@ -9,6 +9,7 @@ from threading import Thread
 HEARTBEAT_PORT = 49002
 COMMAND_PORT = 49003
 XPLANE_PORT = 49001
+ENCODER_PORT = 49004  # New: Inputs ESP sends encoder events here
 TIMEOUT = 30  # Increased from 15 to 30 seconds
 DEVICES_FILE = 'esp_devices.json'
 CALIBRATION_FILE = 'calibration.json'
@@ -264,6 +265,42 @@ def xplane_listener():
         except Exception as e:
             print(f"X-Plane error: {e}")
 
+def encoder_listener():
+    """Listen for encoder events from Inputs ESP"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(('', ENCODER_PORT))
+    print(f"Listening for encoder events on port {ENCODER_PORT}")
+    
+    while True:
+        try:
+            data, addr = sock.recvfrom(1024)
+            msg = data.decode()
+            if msg.startswith("ENCODER:"):
+                parts = msg.split(":")
+                if len(parts) >= 4:
+                    encoder_name = parts[1]
+                    value = int(parts[2])
+                    button = parts[3]
+                    
+                    print(f"[ENCODER] {encoder_name}: value={value}, btn={button}")
+                    
+                    # Map encoder to X-Plane DREF and send
+                    if encoder_name == "EC11_HdgBug":
+                        # Send heading bug adjustment to X-Plane
+                        # This could increment/decrement autopilot heading bug
+                        print(f"  → X-Plane: Heading Bug adjustment {value}")
+                    
+                    # Notify web_server for UI updates
+                    try:
+                        import requests
+                        requests.post('http://localhost:5000/api/encoder_event',
+                                     json={'encoder': encoder_name, 'value': value, 'button': button},
+                                     timeout=1)
+                    except:
+                        pass
+        except Exception as e:
+            print(f"Encoder listener error: {e}")
+
 if __name__ == "__main__":
     print("=== RPi Hub ===")
     load_calibration()
@@ -271,6 +308,7 @@ if __name__ == "__main__":
     Thread(target=heartbeat_listener, daemon=True).start()
     Thread(target=check_offline, daemon=True).start()
     Thread(target=xplane_listener, daemon=True).start()
+    Thread(target=encoder_listener, daemon=True).start()  # New
     print("Ready. Press Ctrl+C to stop\n")
     
     try:
