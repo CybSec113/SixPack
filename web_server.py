@@ -182,6 +182,11 @@ def get_devices():
 def move_motor():
     data = request.json
     esp_id = data.get('esp_id')
+    
+    # Reject motor commands for Inputs ESP (has no motors)
+    if esp_id == 'ESP_Inputs':
+        return jsonify({'status': 'error', 'message': 'ESP_Inputs has no motors'}), 400
+    
     motor_id = data.get('motor_id', 0)  # Default to motor 0
     angle = data.get('angle')
     min_angle = data.get('min_angle', 0)
@@ -230,6 +235,11 @@ def xplane_data():
 def zero_motor():
     data = request.json
     esp_id = data.get('esp_id')
+    
+    # Reject zero commands for Inputs ESP (has no motors)
+    if esp_id == 'ESP_Inputs':
+        return jsonify({'status': 'error', 'message': 'ESP_Inputs has no motors'}), 400
+    
     motor_id = data.get('motor_id', 0)  # Default to motor 0
     
     if send_command(esp_id, f"ZERO:{motor_id}"):
