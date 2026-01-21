@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
+#include <stddef.h>
 #include "rom/ets_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,6 +23,7 @@
 #include "lwip/sockets.h"
 #include "lwip/netif.h"
 #include "driver/gpio.h"
+#include "driver/gptimer.h"
 #include "config.h"
 #include "esp_http_client.h"
 
@@ -42,11 +45,30 @@ static const char *TAG = "udp_receiver";
 #define MOTOR2_IN3 9
 #define MOTOR2_IN4 10
 
-#define MOTOR_DELAY_MS 10 
-#define RESOLUTION_MODE 0  // 0=full, 1=half
+#define MOTOR_STEP_PERIOD_US 5000  // 5ms = 200 steps/second for full step mode
+#define RESOLUTION_MODE 0  // 0=full step only (no half-stepping)
 
 static float current_position[2] = {0, 0};  // Track position for motor 0 and 1
 static int seq_idx[2] = {0, 0};
+
+// Motor state for hardware timer control
+typedef struct {
+    int motor_id;
+    int target_angle;
+    int steps_remaining;
+    int direction;  // 1 or -1
+    bool active;
+} motor_state_t;
+
+static motor_state_t motor_state[2] = {{0}, {0}};
+
+// Sequence for full-step mode only
+static const uint8_t SEQUENCE_FULL[4][4] = {
+    {1, 1, 0, 0},
+    {0, 1, 1, 0},
+    {0, 0, 1, 1},
+    {1, 0, 0, 1},
+};
 
 // Calibration points: value (degrees heading) -> angle (degrees on gauge)
 typedef struct {
@@ -103,23 +125,60 @@ static int value_to_angle(int value)
     return calibration[0].angle;
 }
 
-static const uint8_t SEQUENCE_FULL[4][4] = {
-    {1, 1, 0, 0},
-    {0, 1, 1, 0},
-    {0, 0, 1, 1},
-    {1, 0, 0, 1},
-};
+// Timer interrupt handler for motor stepping
+static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+{
+    int motor_id = (int)(intptr_t)user_ctx;
+    motor_state_t *state = &motor_state[motor_id];
+    
+    if (!state->active || state->steps_remaining <= 0) {
+        return false;  // Don't re-arm
+    }
+    
+    // Perform one step
+    int seq_len = 4;  // Full step mode only
+    const uint8_t (*sequence)[4] = SEQUENCE_FULL;
+    
+    if (motor_id == 0) {
+        gpio_set_level(MOTOR_IN1, sequence[seq_idx[0]][0]);
+        gpio_set_level(MOTOR_IN2, sequence[seq_idx[0]][1]);
+        gpio_set_level(MOTOR_IN3, sequence[seq_idx[0]][2]);
+        gpio_set_level(MOTOR_IN4, sequence[seq_idx[0]][3]);
+    } else {
+        gpio_set_level(MOTOR2_IN1, sequence[seq_idx[1]][0]);
+        gpio_set_level(MOTOR2_IN2, sequence[seq_idx[1]][1]);
+        gpio_set_level(MOTOR2_IN3, sequence[seq_idx[1]][2]);
+        gpio_set_level(MOTOR2_IN4, sequence[seq_idx[1]][3]);
+    }
+    
+    // Update sequence index
+    if (state->direction > 0) {
+        if (motor_id == 0) {
+            seq_idx[0] = (seq_idx[0] + 1) % seq_len;
+        } else {
+            seq_idx[1] = (seq_idx[1] - 1 + seq_len) % seq_len;
+        }
+    } else {
+        if (motor_id == 0) {
+            seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;
+        } else {
+            seq_idx[1] = (seq_idx[1] + 1) % seq_len;
+        }
+    }
+    
+    state->steps_remaining--;
+    
+    if (state->steps_remaining <= 0) {
+        state->active = false;
+        current_position[motor_id] = state->target_angle;
+        ESP_LOGI(TAG, "Motor %d reached target: %d°", motor_id, state->target_angle);
+        return false;  // Stop timer
+    }
+    
+    return true;  // Keep timer running
+}
 
-static const uint8_t SEQUENCE_HALF[8][4] = {
-    {1, 0, 0, 0},
-    {1, 1, 0, 0},
-    {0, 1, 0, 0},
-    {0, 1, 1, 0},
-    {0, 0, 1, 0},
-    {0, 0, 1, 1},
-    {0, 0, 0, 1},
-    {1, 0, 0, 1},
-};
+static gptimer_handle_t motor_timer[2] = {NULL, NULL};
 
 static void motor_init(void)
 {
@@ -144,6 +203,36 @@ static void motor_init(void)
     gpio_set_level(MOTOR2_IN2, 0);
     gpio_set_level(MOTOR2_IN3, 0);
     gpio_set_level(MOTOR2_IN4, 0);
+    
+    // Configure hardware timers for each motor
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000,  // 1 MHz for microsecond precision
+    };
+    
+    // Timer for motor 0
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &motor_timer[0]));
+    gptimer_alarm_config_t alarm_config = {
+        .alarm_count = MOTOR_STEP_PERIOD_US,  // Set alarm period
+        .reload_count = 0,
+        .flags.auto_reload_on_alarm = true,
+    };
+    ESP_ERROR_CHECK(gptimer_set_alarm_action(motor_timer[0], &alarm_config));
+    
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = motor_timer_callback,
+    };
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(motor_timer[0], &cbs, (void *)(intptr_t)0));
+    ESP_ERROR_CHECK(gptimer_enable(motor_timer[0]));
+    
+    // Timer for motor 1
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &motor_timer[1]));
+    ESP_ERROR_CHECK(gptimer_set_alarm_action(motor_timer[1], &alarm_config));
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(motor_timer[1], &cbs, (void *)(intptr_t)1));
+    ESP_ERROR_CHECK(gptimer_enable(motor_timer[1]));
+    
+    ESP_LOGI(TAG, "Motor timers initialized with %d µs step period", MOTOR_STEP_PERIOD_US);
 }
 
 typedef struct {
@@ -153,95 +242,61 @@ typedef struct {
     int max_angle;
 } motor_cmd_t;
 
-static QueueHandle_t motor_queue[2] = {NULL, NULL};  // Separate queue for each motor
-
-static void motor_task(void *pvParameters)
-{
-    int motor_id = (int)pvParameters;  // 0 or 1
-    motor_cmd_t cmd;
-    int seq_len = RESOLUTION_MODE ? 8 : 4;
-    const uint8_t (*sequence)[4] = RESOLUTION_MODE ? SEQUENCE_HALF : SEQUENCE_FULL;
-    
-    while (1) {
-        if (xQueueReceive(motor_queue[motor_id], &cmd, pdMS_TO_TICKS(5000))) {
-            int target = cmd.target_angle;
-            int current = (int)current_position[motor_id];
-            
-            ESP_LOGI(TAG, "Motor %d START: current_position=%.1f, target=%d°", motor_id, current_position[motor_id], target);
-            
-            int diff = target - current;
-            
-            if (diff == 0) continue;
-            
-            // For both motors: normalize and use shortest path
-            int target_norm = target % 360;
-            if (target_norm < 0) target_norm += 360;
-            int current_norm = current % 360;
-            if (current_norm < 0) current_norm += 360;
-            
-            diff = target_norm - current_norm;
-            
-            if (diff > 180) {
-                diff = diff - 360;
-            } else if (diff < -180) {
-                diff = diff + 360;
-            }
-            
-            if (diff == 0) continue;
-            
-            int steps = (int)(abs(diff) / (360.0 / (RESOLUTION_MODE ? 4096 : 2048)));
-            int direction = (diff >= 0) ? 1 : -1;
-            
-            ESP_LOGI(TAG, "Motor %d moving from %d° to %d° (diff: %d°, steps: %d, dir: %s)", 
-                     motor_id, current, target, diff, steps, (direction > 0) ? "CW" : "CCW");
-            
-            int local_seq_idx = seq_idx[motor_id];
-            for (int i = 0; i < steps; i++) {
-                if (motor_id == 0) {
-                    gpio_set_level(MOTOR_IN1, sequence[local_seq_idx][0]);
-                    gpio_set_level(MOTOR_IN2, sequence[local_seq_idx][1]);
-                    gpio_set_level(MOTOR_IN3, sequence[local_seq_idx][2]);
-                    gpio_set_level(MOTOR_IN4, sequence[local_seq_idx][3]);
-                } else {
-                    gpio_set_level(MOTOR2_IN1, sequence[local_seq_idx][0]);
-                    gpio_set_level(MOTOR2_IN2, sequence[local_seq_idx][1]);
-                    gpio_set_level(MOTOR2_IN3, sequence[local_seq_idx][2]);
-                    gpio_set_level(MOTOR2_IN4, sequence[local_seq_idx][3]);
-                }
-                
-                vTaskDelay(pdMS_TO_TICKS(MOTOR_DELAY_MS));
-                
-                if (i % 10 == 0) {
-                    ESP_LOGD(TAG, "Motor %d step %d/%d", motor_id, i, steps);
-                }
-                
-                // Motor 0: normal direction, Motor 1: reversed direction
-                if (direction > 0) {
-                    if (motor_id == 0) {
-                        local_seq_idx = (local_seq_idx + 1) % seq_len;
-                    } else {
-                        local_seq_idx = (local_seq_idx - 1 + seq_len) % seq_len;
-                    }
-                } else {
-                    if (motor_id == 0) {
-                        local_seq_idx = (local_seq_idx - 1 + seq_len) % seq_len;
-                    } else {
-                        local_seq_idx = (local_seq_idx + 1) % seq_len;
-                    }
-                }
-            }
-            
-            seq_idx[motor_id] = local_seq_idx;
-            current_position[motor_id] = target;
-            ESP_LOGI(TAG, "Motor %d position: %d° (target)", motor_id, target);
-        }
-    }
-}
-
 static void motor_move_to(int motor_id, int target_angle, int min_angle, int max_angle)
 {
-    motor_cmd_t cmd = {motor_id, target_angle, min_angle, max_angle};
-    xQueueSend(motor_queue[motor_id], &cmd, 0);
+    // Clamp target to range
+    if (target_angle < min_angle) target_angle = min_angle;
+    if (target_angle > max_angle) target_angle = max_angle;
+    
+    int current = (int)current_position[motor_id];
+    int diff = target_angle - current;
+    
+    if (diff == 0) {
+        ESP_LOGI(TAG, "Motor %d already at target: %d°", motor_id, target_angle);
+        return;
+    }
+    
+    // Normalize and use shortest path for 360-degree instruments
+    int target_norm = target_angle % 360;
+    if (target_norm < 0) target_norm += 360;
+    int current_norm = current % 360;
+    if (current_norm < 0) current_norm += 360;
+    
+    diff = target_norm - current_norm;
+    
+    if (diff > 180) {
+        diff = diff - 360;
+    } else if (diff < -180) {
+        diff = diff + 360;
+    }
+    
+    if (diff == 0) {
+        return;
+    }
+    
+    // Full step mode: 2048 steps per 360 degrees
+    int steps = (int)(abs(diff) / (360.0 / 2048));
+    int direction = (diff >= 0) ? 1 : -1;
+    
+    ESP_LOGI(TAG, "Motor %d START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
+             motor_id, current, target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
+    
+    // Stop any existing movement
+    if (motor_state[motor_id].active) {
+        ESP_ERROR_CHECK(gptimer_stop(motor_timer[motor_id]));
+        motor_state[motor_id].active = false;
+    }
+    
+    // Set up new movement
+    motor_state[motor_id].motor_id = motor_id;
+    motor_state[motor_id].target_angle = target_angle;
+    motor_state[motor_id].steps_remaining = steps;
+    motor_state[motor_id].direction = direction;
+    motor_state[motor_id].active = true;
+    
+    // Reset timer count and start
+    ESP_ERROR_CHECK(gptimer_set_raw_count(motor_timer[motor_id], 0));
+    ESP_ERROR_CHECK(gptimer_start(motor_timer[motor_id]));
 }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
@@ -474,9 +529,6 @@ void app_main(void)
     };
     esp_task_wdt_init(&wdt_config);
     
-    motor_queue[0] = xQueueCreate(10, sizeof(motor_cmd_t));
-    motor_queue[1] = xQueueCreate(10, sizeof(motor_cmd_t));
-    
     motor_init();
     wifi_init();
     vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -486,13 +538,11 @@ void app_main(void)
     vTaskDelay(500 / portTICK_PERIOD_MS);
     esp_log_set_vprintf(wifi_log_vprintf);
     
-    xTaskCreate(motor_task, "motor0", 8192, (void *)0, 4, NULL);
-    xTaskCreate(motor_task, "motor1", 8192, (void *)1, 4, NULL);
     xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 5, NULL);
     xTaskCreate(udp_receiver_task, "udp_receiver", 8192, NULL, 3, NULL);
     
     // Initialize both needles to 0° (North) at startup
-    vTaskDelay(100 / portTICK_PERIOD_MS);  // Brief delay to let motor_task start
+    vTaskDelay(100 / portTICK_PERIOD_MS);  // Brief delay to let motor timers start
     motor_move_to(0, 0, 0, 360);
     motor_move_to(1, 0, 0, 360);
     vTaskDelay(2000 / portTICK_PERIOD_MS);  // Wait for movement to complete

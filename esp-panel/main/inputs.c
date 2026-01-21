@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "rom/ets_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -20,11 +23,12 @@ static const char *TAG = "inputs";
 #define COMMAND_PORT   49003
 #define LOG_PORT       9997
 #define LOG_BUFFER_SIZE 1024
+#define ENCODER_PORT   49004
 
 // EC11 Encoder configurations
-#define EC11_HDG_BUG_CLK   2    // GPIO 2 = CLK / Output A
-#define EC11_HDG_BUG_DT    3    // GPIO 3 = DT / Output B
-#define EC11_HDG_BUG_BTN   4    // GPIO 4 = SW / Switch
+#define EC11_HDG_BUG_CLK   2  // Button input
+#define EC11_HDG_BUG_DT    3
+#define EC11_HDG_BUG_BTN   10
 
 typedef struct {
     const char *name;
@@ -33,6 +37,8 @@ typedef struct {
     int pin_btn;
     int value;
     int last_clk_state;
+    int last_btn_state;
+    int btn_debounce_count;
     bool button_pressed;
 } encoder_t;
 
@@ -44,6 +50,8 @@ static encoder_t encoders[] = {
         .pin_btn = EC11_HDG_BUG_BTN,
         .value = 0,
         .last_clk_state = 0,
+        .last_btn_state = 1,
+        .btn_debounce_count = 0,
         .button_pressed = false,
     },
 };
@@ -54,7 +62,7 @@ static void encoder_init(void)
 {
     gpio_config_t io_conf = {
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
@@ -64,9 +72,17 @@ static void encoder_init(void)
                                (1ULL << encoders[i].pin_dt) | 
                                (1ULL << encoders[i].pin_btn);
         gpio_config(&io_conf);
-        
         encoders[i].last_clk_state = gpio_get_level(encoders[i].pin_clk);
+        encoders[i].last_btn_state = gpio_get_level(encoders[i].pin_btn);
     }
+    
+    // Verify GPIO4 specifically
+    int gpio_btn = gpio_get_level(EC11_HDG_BUG_BTN);
+    int clk_level = gpio_get_level(EC11_HDG_BUG_CLK);
+    int dt_level = gpio_get_level(EC11_HDG_BUG_DT);
+    
+    ESP_LOGI(TAG, "GPIO init: BTN(GPIO%d)=%d CLK(GPIO%d)=%d DT(GPIO%d)=%d", 
+        EC11_HDG_BUG_BTN, gpio_btn, EC11_HDG_BUG_CLK, clk_level, EC11_HDG_BUG_DT, dt_level);
 }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
@@ -104,14 +120,24 @@ static void wifi_init(void)
 
 static int log_socket = -1;
 
+// Keep reference to default vprintf for fallback
+static vprintf_like_t default_vprintf = NULL;
+
 static int wifi_log_vprintf(const char *fmt, va_list args)
 {
     static char log_buffer[LOG_BUFFER_SIZE];
     int len = vsnprintf(log_buffer, LOG_BUFFER_SIZE - 1, fmt, args);
     
+    // Send to WiFi if connected
     if (log_socket >= 0 && len > 0) {
         send(log_socket, (uint8_t *)log_buffer, len, 0);
     }
+    
+    // Always also send to default (USB/UART) for debugging
+    if (default_vprintf && len > 0) {
+        default_vprintf(fmt, args);
+    }
+    
     return len;
 }
 
@@ -129,6 +155,10 @@ static void wifi_logging_task(void *pvParameters)
     
     int opt = 1;
     setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
+    // Set non-blocking mode
+    int flags = fcntl(server_socket, F_GETFL, 0);
+    fcntl(server_socket, F_SETFL, flags | O_NONBLOCK);
     
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -151,23 +181,19 @@ static void wifi_logging_task(void *pvParameters)
         int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
         if (client_socket >= 0) {
             log_socket = client_socket;
-            ESP_LOGI(TAG, "WiFi logging client connected: %s", inet_ntoa(client_addr.sin_addr));
-            
-            char dummy[256];
-            while (recv(client_socket, dummy, sizeof(dummy), 0) > 0) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-            }
-            
-            ESP_LOGI(TAG, "WiFi logging client disconnected");
-            close(client_socket);
-            log_socket = -1;
+            // Set client to non-blocking
+            flags = fcntl(client_socket, F_GETFL, 0);
+            fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
+            ESP_LOGI(TAG, "WiFi logging client connected");
         }
+        
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
 static void heartbeat_task(void *pvParameters)
 {
-    esp_task_wdt_add(NULL);
+    ESP_LOGI(TAG, "Heartbeat task started");
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     
     struct sockaddr_in dest_addr;
@@ -182,111 +208,111 @@ static void heartbeat_task(void *pvParameters)
         return;
     }
     
-    ESP_LOGI(TAG, "Heartbeat task started, sending to %s:%d", RPI_IP, HEARTBEAT_PORT);
+    ESP_LOGI(TAG, "Heartbeat sending to %s:%d", RPI_IP, HEARTBEAT_PORT);
 
     char heartbeat_msg[64];
-    int heartbeat_count = 0;
 
     while (1) {
-        esp_task_wdt_reset();
         uint32_t uptime = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
         snprintf(heartbeat_msg, sizeof(heartbeat_msg), "HEARTBEAT:%s:%lu", ESP_ID, (unsigned long)uptime);
         
         int ret = sendto(sock, heartbeat_msg, strlen(heartbeat_msg), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
         if (ret < 0) {
-            ESP_LOGW(TAG, "Heartbeat send failed: errno %d, to %s:%d", errno, RPI_IP, HEARTBEAT_PORT);
+            ESP_LOGW(TAG, "Heartbeat send failed: errno %d", errno);
         } else {
-            heartbeat_count++;
-            if (heartbeat_count % 6 == 0) {
-                ESP_LOGI(TAG, "Heartbeat sent (%d sent, msg: %s)", heartbeat_count, heartbeat_msg);
-            }
+            ESP_LOGI(TAG, "Heartbeat OK");
         }
         
-        esp_task_wdt_reset();
         vTaskDelay(5000 / portTICK_PERIOD_MS);
     }
 }
 
-#define ENCODER_PORT   49004  // New: Send encoder events to rpi_hub
-
 static void encoder_task(void *pvParameters)
 {
-    ESP_LOGI(TAG, "Encoder task started, monitoring %d encoders", encoder_count);
+    ESP_LOGI(TAG, "encoder_task: starting");
     
-    struct sockaddr_in rpi_addr;
-    rpi_addr.sin_addr.s_addr = inet_addr((const char *)RPI_IP);
-    rpi_addr.sin_family = AF_INET;
-    rpi_addr.sin_port = htons(ENCODER_PORT);
+    // Shorter delay in chunks to avoid watchdog
+    for (int i = 0; i < 3; i++) {
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        ESP_LOGI(TAG, "encoder_task: delay %d/3", i+1);
+    }
+    ESP_LOGI(TAG, "encoder_task: WiFi wait done");
     
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (sock < 0) {
-        ESP_LOGE(TAG, "Unable to create encoder socket");
+        ESP_LOGE(TAG, "Encoder socket failed");
         vTaskDelete(NULL);
         return;
     }
+    ESP_LOGI(TAG, "encoder_task: socket created");
+    
+    int flags = fcntl(sock, F_GETFL, 0);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    
+    struct sockaddr_in rpi_addr = {0};
+    rpi_addr.sin_addr.s_addr = inet_addr((const char *)RPI_IP);
+    rpi_addr.sin_family = AF_INET;
+    rpi_addr.sin_port = htons(ENCODER_PORT);
+    ESP_LOGI(TAG, "encoder_task: address configured");
     
     int last_button_state[encoder_count];
+    int last_clk_state[encoder_count];
     for (int i = 0; i < encoder_count; i++) {
-        last_button_state[i] = 0;
+        last_button_state[i] = 1;  // Initialize to released (GPIO HIGH at rest)
+        last_clk_state[i] = gpio_get_level(encoders[i].pin_clk);
     }
+    
+    ESP_LOGI(TAG, "Encoder monitoring active");
     
     while (1) {
         for (int i = 0; i < encoder_count; i++) {
             int clk_state = gpio_get_level(encoders[i].pin_clk);
             int dt_state = gpio_get_level(encoders[i].pin_dt);
-            bool btn_state = (gpio_get_level(encoders[i].pin_btn) == 0);  // Active low
+            int btn_raw = gpio_get_level(encoders[i].pin_btn);
+            bool btn_state = (btn_raw == 0);  // GPIO LOW = pressed, HIGH = released
             
-            // Detect CLK falling edge
-            if (encoders[i].last_clk_state == 1 && clk_state == 0) {
-                // Determine direction from DT state
+            if (last_clk_state[i] == 1 && clk_state == 0) {
+                // CLK falling edge detected - read DT state immediately
+                dt_state = gpio_get_level(encoders[i].pin_dt);
+                
                 if (dt_state == 1) {
                     encoders[i].value++;
                 } else {
                     encoders[i].value--;
                 }
                 
-                // Send encoder event to rpi_hub
-                char encoder_msg[64];
-                snprintf(encoder_msg, sizeof(encoder_msg), "ENCODER:%s:%d:%s", 
-                    encoders[i].name, 
-                    encoders[i].value, 
+                char msg[64];
+                snprintf(msg, sizeof(msg), "ENCODER:%s:%d:%s", 
+                    encoders[i].name, encoders[i].value, 
                     btn_state ? "PRESSED" : "released");
-                
-                int ret = sendto(sock, encoder_msg, strlen(encoder_msg), 0, 
-                               (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
-                
-                if (ret < 0) {
-                    ESP_LOGW(TAG, "Encoder send failed: errno %d", errno);
-                } else {
-                    ESP_LOGI(TAG, "Sent: %s", encoder_msg);
-                }
+                sendto(sock, msg, strlen(msg), 0, 
+                    (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
             }
             
-            // Send button state change
             if (btn_state != last_button_state[i]) {
-                char encoder_msg[64];
-                snprintf(encoder_msg, sizeof(encoder_msg), "ENCODER:%s:%d:%s", 
-                    encoders[i].name, 
-                    encoders[i].value, 
-                    btn_state ? "PRESSED" : "released");
+                // Button state changed - confirm it after minimal debounce
+                btn_raw = gpio_get_level(encoders[i].pin_btn);
+                bool btn_new = (btn_raw == 0);  // LOW = pressed
                 
-                int ret = sendto(sock, encoder_msg, strlen(encoder_msg), 0, 
-                               (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
-                
-                if (ret < 0) {
-                    ESP_LOGW(TAG, "Button state send failed: errno %d", errno);
-                } else {
-                    ESP_LOGI(TAG, "Button: %s", encoder_msg);
+                if (btn_new != last_button_state[i]) {
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "ENCODER:%s:%d:%s", 
+                        encoders[i].name, encoders[i].value, 
+                        btn_new ? "PRESSED" : "released");
+                    sendto(sock, msg, strlen(msg), 0, 
+                        (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
+                    last_button_state[i] = btn_new;
+                    encoders[i].last_btn_state = btn_new;
                 }
-                
-                last_button_state[i] = btn_state;
             }
             
+            last_clk_state[i] = clk_state;
             encoders[i].last_clk_state = clk_state;
             encoders[i].button_pressed = btn_state;
         }
         
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // Poll every 1ms instead of 10ms for more responsive encoder reading
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
     
     close(sock);
@@ -294,35 +320,25 @@ static void encoder_task(void *pvParameters)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting Inputs ESP");
-    
-    esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = 60000,
-        .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
-        .trigger_panic = true,
-    };
-    esp_task_wdt_init(&wdt_config);
+    ESP_LOGI(TAG, "Inputs ESP starting");
     
     encoder_init();
     wifi_init();
     vTaskDelay(5000 / portTICK_PERIOD_MS);
     
     xTaskCreate(wifi_logging_task, "wifi_log", 4096, NULL, 2, NULL);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    esp_log_set_vprintf(wifi_log_vprintf);
+    xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 3, NULL);
+    xTaskCreate(encoder_task, "encoder", 4096, NULL, 3, NULL);
     
-    xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 5, NULL);
-    xTaskCreate(encoder_task, "encoder", 4096, NULL, 4, NULL);
-    
-    ESP_LOGI(TAG, "Initialization complete, ready for input events");
+    // Save default vprintf before override, then set dual logging
+    default_vprintf = esp_log_set_vprintf(wifi_log_vprintf);
+    ESP_LOGI(TAG, "Ready");
     
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        vTaskDelay(pdMS_TO_TICKS(60000));
     }
 }
 
 #ifdef CONFIG_INSTRUMENT_INPUTS
-
 // Inputs-specific implementation only compiles when CONFIG_INSTRUMENT_INPUTS=y
-
 #endif // CONFIG_INSTRUMENT_INPUTS

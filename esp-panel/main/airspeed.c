@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
+#include <stddef.h>
 #include "rom/ets_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,6 +23,7 @@
 #include "lwip/sockets.h"
 #include "lwip/netif.h"
 #include "driver/gpio.h"
+#include "driver/gptimer.h"
 #include "config.h"
 #include "esp_http_client.h"
 
@@ -36,11 +39,29 @@ static const char *TAG = "udp_receiver";
 #define MOTOR_IN2 4
 #define MOTOR_IN3 5
 #define MOTOR_IN4 6
-#define MOTOR_DELAY_MS 10 
-#define RESOLUTION_MODE 0  // 0=full, 1=half
+#define MOTOR_STEP_PERIOD_US 5000  // 5ms = 200 steps/second for full step mode
+#define RESOLUTION_MODE 0  // 0=full step only (no half-stepping)
 
 static float current_position = 0;
 static int seq_idx = 0;
+
+// Motor state for hardware timer control
+typedef struct {
+    int target_angle;
+    int steps_remaining;
+    int direction;  // 1 or -1
+    bool active;
+} motor_state_t;
+
+static motor_state_t motor_state = {0};
+
+// Sequence for full-step mode only
+static const uint8_t SEQUENCE_FULL[4][4] = {
+    {1, 1, 0, 0},
+    {0, 1, 1, 0},
+    {0, 0, 1, 1},
+    {1, 0, 0, 1},
+};
 
 // Calibration points: value (knots) -> angle (degrees)
 typedef struct {
@@ -91,25 +112,45 @@ static int value_to_angle(int value)
     }
     
     return calibration[0].angle;
+    return calibration[0].angle;
 }
 
-static const uint8_t SEQUENCE_FULL[4][4] = {
-    {1, 1, 0, 0},
-    {0, 1, 1, 0},
-    {0, 0, 1, 1},
-    {1, 0, 0, 1},
-};
+// Timer interrupt handler for motor stepping
+static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+{
+    if (!motor_state.active || motor_state.steps_remaining <= 0) {
+        return false;  // Don't re-arm
+    }
+    
+    // Perform one step
+    int seq_len = 4;  // Full step mode only
+    const uint8_t (*sequence)[4] = SEQUENCE_FULL;
+    
+    gpio_set_level(MOTOR_IN1, sequence[seq_idx][0]);
+    gpio_set_level(MOTOR_IN2, sequence[seq_idx][1]);
+    gpio_set_level(MOTOR_IN3, sequence[seq_idx][2]);
+    gpio_set_level(MOTOR_IN4, sequence[seq_idx][3]);
+    
+    // Update sequence index
+    if (motor_state.direction > 0) {
+        seq_idx = (seq_idx + 1) % seq_len;
+    } else {
+        seq_idx = (seq_idx - 1 + seq_len) % seq_len;
+    }
+    
+    motor_state.steps_remaining--;
+    
+    if (motor_state.steps_remaining <= 0) {
+        motor_state.active = false;
+        current_position = motor_state.target_angle;
+        ESP_LOGI(TAG, "Motor reached target: %d°", motor_state.target_angle);
+        return false;  // Stop timer
+    }
+    
+    return true;  // Keep timer running
+}
 
-static const uint8_t SEQUENCE_HALF[8][4] = {
-    {1, 0, 0, 0},
-    {1, 1, 0, 0},
-    {0, 1, 0, 0},
-    {0, 1, 1, 0},
-    {0, 0, 1, 0},
-    {0, 0, 1, 1},
-    {0, 0, 0, 1},
-    {1, 0, 0, 1},
-};
+static gptimer_handle_t motor_timer = NULL;
 
 static void motor_init(void)
 {
@@ -125,6 +166,29 @@ static void motor_init(void)
     gpio_set_level(MOTOR_IN2, 0);
     gpio_set_level(MOTOR_IN3, 0);
     gpio_set_level(MOTOR_IN4, 0);
+    
+    // Configure hardware timer
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000,  // 1 MHz for microsecond precision
+    };
+    
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &motor_timer));
+    gptimer_alarm_config_t alarm_config = {
+        .alarm_count = MOTOR_STEP_PERIOD_US,  // Set alarm period
+        .reload_count = 0,
+        .flags.auto_reload_on_alarm = true,
+    };
+    ESP_ERROR_CHECK(gptimer_set_alarm_action(motor_timer, &alarm_config));
+    
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = motor_timer_callback,
+    };
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(motor_timer, &cbs, NULL));
+    ESP_ERROR_CHECK(gptimer_enable(motor_timer));
+    
+    ESP_LOGI(TAG, "Motor timer initialized with %d µs step period", MOTOR_STEP_PERIOD_US);
 }
 
 typedef struct {
@@ -133,74 +197,51 @@ typedef struct {
     int max_angle;
 } motor_cmd_t;
 
-static QueueHandle_t motor_queue = NULL;
-
-static void motor_task(void *pvParameters)
-{
-    motor_cmd_t cmd;
-    int seq_len = RESOLUTION_MODE ? 8 : 4;
-    const uint8_t (*sequence)[4] = RESOLUTION_MODE ? SEQUENCE_HALF : SEQUENCE_FULL;
-    
-    while (1) {
-        if (xQueueReceive(motor_queue, &cmd, pdMS_TO_TICKS(5000))) {
-            int target = cmd.target_angle;
-            int current = (int)current_position;
-            
-            ESP_LOGI(TAG, "START: current_position=%.1f, target=%d°", current_position, target);
-            
-            int diff = target - current;
-            
-            if (diff == 0) continue;
-            
-            // Don't wrap around through 0/360 boundary - force direct path
-            // If wrapping would be shorter but crosses 0/360, go the long way instead
-            if (diff > 180) {
-                // Wrapping forward would cross 0°, go backward instead
-                diff = diff - 360;
-            } else if (diff < -180) {
-                // Wrapping backward would cross 0°, go forward instead
-                diff = diff + 360;
-            }
-            
-            if (diff == 0) continue;
-            
-            int steps = (int)(abs(diff) / (360.0 / (RESOLUTION_MODE ? 4096 : 2048)));
-            int direction = (diff >= 0) ? 1 : -1;
-            
-            ESP_LOGI(TAG, "Moving from %d° to %d° (diff: %d°, steps: %d, dir: %s)", 
-                     current, target, diff, steps, (direction > 0) ? "CW" : "CCW");
-            
-            int local_seq_idx = seq_idx;
-            for (int i = 0; i < steps; i++) {
-                gpio_set_level(MOTOR_IN1, sequence[local_seq_idx][0]);
-                gpio_set_level(MOTOR_IN2, sequence[local_seq_idx][1]);
-                gpio_set_level(MOTOR_IN3, sequence[local_seq_idx][2]);
-                gpio_set_level(MOTOR_IN4, sequence[local_seq_idx][3]);
-                
-                vTaskDelay(pdMS_TO_TICKS(MOTOR_DELAY_MS));
-                
-                if (i % 10 == 0) {
-                    ESP_LOGD(TAG, "Step %d/%d", i, steps);
-                }
-                
-                if (direction > 0) {
-                    local_seq_idx = (local_seq_idx + 1) % seq_len;
-                } else {
-                    local_seq_idx = (local_seq_idx - 1 + seq_len) % seq_len;
-                }
-            }
-            
-            seq_idx = local_seq_idx;
-            current_position = target;  // Use the clamped target, not the original
-            ESP_LOGI(TAG, "Position: %d° (clamped from requested target)", target);
-        }
-    }
-}
-
 static void motor_move_to(int target_angle, int min_angle, int max_angle)
 {
-    motor_cmd_t cmd = {target_angle, min_angle, max_angle};
-    xQueueSend(motor_queue, &cmd, 0);
+    // Clamp target to range
+    if (target_angle < min_angle) target_angle = min_angle;
+    if (target_angle > max_angle) target_angle = max_angle;
+    
+    int current = (int)current_position;
+    int diff = target_angle - current;
+    
+    if (diff == 0) {
+        ESP_LOGI(TAG, "Motor already at target: %d°", target_angle);
+        return;
+    }
+    
+    // For airspeed: never wrap around through 0° - take the direct path
+    // If we're at lower angle going to higher angle, go forward
+    // If we're at higher angle going to lower angle, go backward
+    // Never cross 0 degrees
+    
+    if (diff == 0) {
+        return;
+    }
+    
+    // Full step mode: 2048 steps per 360 degrees
+    int steps = (int)(abs(diff) / (360.0 / 2048));
+    int direction = (diff >= 0) ? 1 : -1;
+    
+    ESP_LOGI(TAG, "Motor START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
+             current, target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
+    
+    // Stop any existing movement
+    if (motor_state.active) {
+        ESP_ERROR_CHECK(gptimer_stop(motor_timer));
+        motor_state.active = false;
+    }
+    
+    // Set up new movement
+    motor_state.target_angle = target_angle;
+    motor_state.steps_remaining = steps;
+    motor_state.direction = direction;
+    motor_state.active = true;
+    
+    // Reset timer count and start
+    ESP_ERROR_CHECK(gptimer_set_raw_count(motor_timer, 0));
+    ESP_ERROR_CHECK(gptimer_start(motor_timer));
 }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
@@ -431,8 +472,6 @@ void app_main(void)
     };
     esp_task_wdt_init(&wdt_config);
     
-    motor_queue = xQueueCreate(10, sizeof(motor_cmd_t));
-    
     motor_init();
     wifi_init();
     vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -442,12 +481,11 @@ void app_main(void)
     vTaskDelay(500 / portTICK_PERIOD_MS);
     esp_log_set_vprintf(wifi_log_vprintf);
     
-    xTaskCreate(motor_task, "motor", 8192, NULL, 4, NULL);
     xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 5, NULL);
     xTaskCreate(udp_receiver_task, "udp_receiver", 8192, NULL, 3, NULL);
     
     // Initialize needle to 0° at startup
-    vTaskDelay(100 / portTICK_PERIOD_MS);  // Brief delay to let motor_task start
+    vTaskDelay(100 / portTICK_PERIOD_MS);  // Brief delay to let motor timer start
     motor_move_to(0, 0, 360);
     vTaskDelay(2000 / portTICK_PERIOD_MS);  // Wait for movement to complete
     ESP_LOGI(TAG, "Initialization complete. Needle at 0°, ready for commands.");
