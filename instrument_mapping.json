@@ -20,8 +20,12 @@
           "transform": "negate"
         },
         "1": {
-          "dref": "sim/cockpit2/autopilot/heading_dial_deg_mag_pilot",
-          "transform": "negate"
+          "drefs": [
+            "sim/cockpit2/autopilot/heading_dial_deg_mag_pilot",
+            "sim/cockpit2/gauges/indicators/heading_vacuum_deg_mag_pilot"
+          ],
+          "transform": "subtract",
+          "negate": true
         }
       }
     }
