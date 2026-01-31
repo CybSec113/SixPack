@@ -210,17 +210,6 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
         return;
     }
     
-    // For airspeed: never wrap around - take the direct path
-    // Don't allow wrapping through 0 degrees
-    if (abs(diff) > 180) {
-        // Going the long way, reverse direction instead
-        if (diff > 0) {
-            diff = diff - 360;
-        } else {
-            diff = diff + 360;
-        }
-    }
-    
     // Full step mode: 2048 steps per 360 degrees
     int steps = (int)(abs(diff) / (360.0 / 2048));
     int direction = (diff >= 0) ? 1 : -1;
