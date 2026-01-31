@@ -289,7 +289,7 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     
     // Set up new movement
     motor_state[motor_id].motor_id = motor_id;
-    motor_state[motor_id].target_angle = target_angle;
+    motor_state[motor_id].target_angle = target_norm;
     motor_state[motor_id].steps_remaining = steps;
     motor_state[motor_id].direction = direction;
     motor_state[motor_id].active = true;
