@@ -226,7 +226,7 @@ def xplane_listener():
                                     last_val = last_values.get(key, -999)
                                     
                                     if abs(combined_value - last_val) > 1:
-                                        print(f"[X-Plane] {instrument_name}: {combined_value} {config.get('unit', '')} (Motor {motor_id}) [sum of {list(motor_accumulator[key]['drefs'].keys())}]")
+                                        print(f"[X-Plane] {instrument_name}: {combined_value} {config.get('unit', '')} (Motor {motor_id}) [XPlane: {motor_accumulator[key]['sum']}] [sum of {list(motor_accumulator[key]['drefs'].keys())}]")
                                         send_command(esp_id, f"VALUE:{motor_id}:{combined_value}")
                                         notify_webserver_xplane(field, combined_value, esp_id, motor_id)
                                         last_values[key] = combined_value
@@ -254,7 +254,7 @@ def xplane_listener():
                                 
                                 last_val = last_values.get(key, -999)
                                 if abs(final_value - last_val) > 1:
-                                    print(f"[X-Plane] {instrument_name}: {final_value} {config.get('unit', '')} (Motor {motor_id})")
+                                    print(f"[X-Plane] {instrument_name}: {final_value} {config.get('unit', '')} (Motor {motor_id}) [XPlane: {value}]")
                                     send_command(esp_id, f"VALUE:{motor_id}:{final_value}")
                                     notify_webserver_xplane(field, final_value, esp_id, motor_id)
                                     last_values[key] = final_value
