@@ -167,6 +167,7 @@ def xplane_listener():
     last_values = {}
     last_logged_dref = {}
     motor_accumulator = {}
+    compass_heading = 0  # Current compass heading
     xplane_timestamps = {}  # Track last X-Plane message time per instrument
     
     while True:
@@ -246,11 +247,12 @@ def xplane_listener():
                                 
                                 # Update compass heading if this is motor 0 of ESP_Gyrocompass
                                 if motor_id == 0 and esp_id == 'ESP_Gyrocompass':
-                                    pass  # Motor 0 just gets compass heading as-is
+                                    compass_heading = final_value
                                 
-                                # For heading bug on ESP_Gyrocompass motor 1: just send autopilot heading as-is
+                                # For heading bug on ESP_Gyrocompass motor 1: send absolute heading
                                 if motor_id == 1 and esp_id == 'ESP_Gyrocompass':
-                                    pass  # Motor 1 just gets autopilot heading as-is
+                                    # Bug points to absolute heading on the dial
+                                    pass  # Send final_value as-is
                                 
                                 last_val = last_values.get(key, -999)
                                 if abs(final_value - last_val) > 1:
