@@ -240,15 +240,19 @@ def xplane_listener():
                                 if transform == 'negate':
                                     final_value = -final_value
                                 
-                                # For heading bug on ESP_Gyrocompass motor 1: calculate relative to negated compass
-                                if motor_id == 1 and esp_id == 'ESP_Gyrocompass':
-                                    # Bug angle = negated_bug_heading - negated_compass_heading
-                                    final_value = (final_value - compass_heading) % 360
-                                
                                 # Normalize to 0-360
                                 final_value = final_value % 360
                                 if final_value < 0:
                                     final_value += 360
+                                
+                                # Update compass heading if this is motor 0 of ESP_Gyrocompass
+                                if motor_id == 0 and esp_id == 'ESP_Gyrocompass':
+                                    compass_heading = final_value
+                                
+                                # For heading bug on ESP_Gyrocompass motor 1: calculate relative to compass
+                                if motor_id == 1 and esp_id == 'ESP_Gyrocompass':
+                                    # Bug angle = desired_bug_heading - current_compass_heading
+                                    final_value = (final_value - compass_heading) % 360
                                 
                                 last_val = last_values.get(key, -999)
                                 if abs(final_value - last_val) > 1:
