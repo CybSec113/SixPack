@@ -24,10 +24,10 @@
           "transform": "negate"
         }
       }
-    }
+    },
     "ESP_Altimeter": {
       "esp_id": "ESP_Altimeter",
-      "description": "Altitude Indicator",
+      "description": "Altimeter",
       "unit": "feet",
       "motors": {
         "0": {

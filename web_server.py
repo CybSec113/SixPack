@@ -27,7 +27,7 @@ encoder_events = {}  # New: Store latest encoder events
 INSTRUMENT_METADATA = {
     'ESP_Airspeed': {'motor_count': 1, 'type': 'airspeed'},
     'ESP_AttitudeIndicator': {'motor_count': 2, 'type': 'attitude'},
-    'ESP_Altitude': {'motor_count': 2, 'type': 'altitude'},
+    'ESP_Altimeter': {'motor_count': 2, 'type': 'altimeter'},
     'ESP_TurnIndicator': {'motor_count': 1, 'type': 'turn'},
     'ESP_Gyrocompass': {'motor_count': 2, 'type': 'heading'},
     'ESP_VSI': {'motor_count': 1, 'type': 'vsi'},
@@ -116,7 +116,7 @@ def get_devices():
     instrument_order = [
         'ESP_Airspeed',
         'ESP_AttitudeIndicator',
-        'ESP_Altitude',
+        'ESP_Altimeter',
         'ESP_TurnIndicator',
         'ESP_Gyrocompass',
         'ESP_VSI',
