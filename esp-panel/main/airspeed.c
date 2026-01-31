@@ -112,7 +112,6 @@ static int value_to_angle(int value)
     }
     
     return calibration[0].angle;
-    return calibration[0].angle;
 }
 
 // Timer interrupt handler for motor stepping
@@ -211,13 +210,15 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
         return;
     }
     
-    // For airspeed: never wrap around through 0° - take the direct path
-    // If we're at lower angle going to higher angle, go forward
-    // If we're at higher angle going to lower angle, go backward
-    // Never cross 0 degrees
-    
-    if (diff == 0) {
-        return;
+    // For airspeed: never wrap around - take the direct path
+    // Don't allow wrapping through 0 degrees
+    if (abs(diff) > 180) {
+        // Going the long way, reverse direction instead
+        if (diff > 0) {
+            diff = diff - 360;
+        } else {
+            diff = diff + 360;
+        }
     }
     
     // Full step mode: 2048 steps per 360 degrees

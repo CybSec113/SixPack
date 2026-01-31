@@ -259,9 +259,6 @@ def xplane_listener():
                             break
                     if found:
                         break
-                
-                if not found:
-                    print(f"[DREF] No mapping found for: {field}")
         except Exception as e:
             print(f"X-Plane error: {e}")
 

@@ -76,38 +76,37 @@ typedef struct {
     int angle;
 } cal_point_t;
 
-// Altimeter Motor 0: Altitude indicator (0-10000 feet)
-// 10 calibration points
+// Altimeter Motor 0: 100 feet hand (0-1000 feet per rotation, keeps circling)
+// The 1000 and 10000 feet hands are mechanically linked to this motor
+// 10 calibration points for 0-1000 feet across 360° (wraps for multi-rotation altitudes)
 static const cal_point_t calibration_motor0[10] = {
     {0,      0},       // 0 ft at 0°
-    {1000,   36},      // 1000 ft at 36°
-    {2000,   72},      // 2000 ft at 72°
-    {3000,   108},     // 3000 ft at 108°
-    {4000,   144},     // 4000 ft at 144°
-    {5000,   180},     // 5000 ft at 180°
-    {6000,   216},     // 6000 ft at 216°
-    {7000,   252},     // 7000 ft at 252°
-    {8000,   288},     // 8000 ft at 288°
-    {10000,  360},     // 10000 ft at 360°
-};
-
-// Altimeter Motor 1: Barometric setting (28.5 - 31.0 inHg or similar)
-// Storing as integers: 285-310 representing 28.5-31.0
-static const cal_point_t calibration_motor1[10] = {
-    {285,    0},       // 28.50 inHg at 0°
-    {287,    36},      // 28.70 inHg at 36°
-    {289,    72},      // 28.90 inHg at 72°
-    {291,    108},     // 29.10 inHg at 108°
-    {293,    144},     // 29.30 inHg at 144°
-    {295,    180},     // 29.50 inHg at 180°
-    {297,    216},     // 29.70 inHg at 216°
-    {299,    252},     // 29.90 inHg at 252°
-    {301,    288},     // 30.10 inHg at 288°
-    {310,    360},     // 31.00 inHg at 360°
+    {100,    36},      // 100 ft at 36°
+    {200,    72},      // 200 ft at 72°
+    {300,    108},     // 300 ft at 108°
+    {400,    144},     // 400 ft at 144°
+    {500,    180},     // 500 ft at 180°
+    {600,    216},     // 600 ft at 216°
+    {700,    252},     // 700 ft at 252°
+    {800,    288},     // 800 ft at 288°
+    {1000,   360},     // 1000 ft at 360° (wraps for altitudes > 1000 ft)
 };
 
 static const int calibration_count_motor0 = 10;
-static const int calibration_count_motor1 = 10;
+// Storing as integers: 286-311 representing 28.6-31.1 inHg (in 0.1 inHg units)
+// 7 points evenly spaced across 216° (does not wrap)
+static const cal_point_t calibration_motor1[7] = {
+    {286,    0},       // 28.60 inHg at 0°
+    {290,    36},      // 29.00 inHg at 36°
+    {294,    72},      // 29.40 inHg at 72°
+    {298,    108},     // 29.80 inHg at 108°
+    {302,    144},     // 30.20 inHg at 144°
+    {306,    180},     // 30.60 inHg at 180°
+    {311,    216},     // 31.10 inHg at 216°
+};
+
+static const int calibration_count_motor0 = 10;
+static const int calibration_count_motor1 = 7;
 
 // Convert value to motor angle using calibration points
 static int value_to_angle(int motor_id, int value)
@@ -118,6 +117,8 @@ static int value_to_angle(int motor_id, int value)
     if (motor_id == 0) {
         calibration = calibration_motor0;
         calibration_count = calibration_count_motor0;
+        // Motor 0 (altitude): wrap values to handle multi-rotation (0-1000 ft repeats)
+        value = value % 1000;
     } else {
         calibration = calibration_motor1;
         calibration_count = calibration_count_motor1;
