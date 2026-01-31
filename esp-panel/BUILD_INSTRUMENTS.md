@@ -18,7 +18,7 @@ All instruments use the same CMakeLists.txt with environment-based configuration
 idf.py fullclean
 idf.py menuconfig
 # Set: Network → WiFi SSID, Password, RPI_IP, ESP_DEVICE_ID
-idf.py build
+idf.py -D INSTRUMENT=altimeter build
 idf.py -p /dev/tty.usbmodem13301 flash monitor
 ```
 
