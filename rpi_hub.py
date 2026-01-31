@@ -249,10 +249,9 @@ def xplane_listener():
                                 if motor_id == 0 and esp_id == 'ESP_Gyrocompass':
                                     compass_heading = final_value
                                 
-                                # For heading bug on ESP_Gyrocompass motor 1: send absolute heading
+                                # For heading bug on ESP_Gyrocompass motor 1: add 180° offset (motor mounted opposite)
                                 if motor_id == 1 and esp_id == 'ESP_Gyrocompass':
-                                    # Bug points to absolute heading on the dial
-                                    pass  # Send final_value as-is
+                                    final_value = (final_value + 180) % 360
                                 
                                 last_val = last_values.get(key, -999)
                                 if abs(final_value - last_val) > 1:
