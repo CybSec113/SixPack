@@ -25,5 +25,20 @@
         }
       }
     }
+    "ESP_Altimeter": {
+      "esp_id": "ESP_Altimeter",
+      "description": "Altitude Indicator",
+      "unit": "feet",
+      "motors": {
+        "0": {
+          "dref": "TBD",
+          "transform": "negate"
+        },
+        "1": {
+          "dref": "TBD",
+          "transform": "negate"
+        }
+      }
+    }
   }
 }

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # Define instrument configurations
-set(INSTRUMENT_CONFIGS airspeed gyro heading altitude vsi inputs)
+set(INSTRUMENT_CONFIGS airspeed gyro heading altimeter vsi inputs)
 
 # Detect which sdkconfig variant to use from environment or default to airspeed
 if(NOT DEFINED INSTRUMENT)

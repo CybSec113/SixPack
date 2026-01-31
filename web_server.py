@@ -27,7 +27,7 @@ encoder_events = {}  # New: Store latest encoder events
 INSTRUMENT_METADATA = {
     'ESP_Airspeed': {'motor_count': 1, 'type': 'airspeed'},
     'ESP_AttitudeIndicator': {'motor_count': 2, 'type': 'attitude'},
-    'ESP_Altitude': {'motor_count': 1, 'type': 'altitude'},
+    'ESP_Altitude': {'motor_count': 2, 'type': 'altitude'},
     'ESP_TurnIndicator': {'motor_count': 1, 'type': 'turn'},
     'ESP_Gyrocompass': {'motor_count': 2, 'type': 'heading'},
     'ESP_VSI': {'motor_count': 1, 'type': 'vsi'},
