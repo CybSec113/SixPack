@@ -168,6 +168,8 @@ def xplane_listener():
     last_logged_dref = {}
     motor_accumulator = {}
     compass_heading = 0  # Track current compass heading for bug calculation
+    bug_heading = 0  # Track desired bug heading (absolute)
+    bug_heading_valid = False  # Flag to track if we've received a bug heading yet
     xplane_timestamps = {}  # Track last X-Plane message time per instrument
     
     while True:
@@ -248,11 +250,26 @@ def xplane_listener():
                                 # Update compass heading if this is motor 0 of ESP_Gyrocompass
                                 if motor_id == 0 and esp_id == 'ESP_Gyrocompass':
                                     compass_heading = final_value
+                                    # When compass changes, recalculate bug position if bug heading is valid
+                                    if bug_heading_valid:
+                                        bug_relative = (bug_heading - compass_heading) % 360
+                                        if bug_relative > 180:
+                                            bug_relative -= 360
+                                        last_val = last_values.get(f"ESP_Gyrocompass:1", -999)
+                                        if abs(bug_relative - last_val) > 0.5:
+                                            print(f"[X-Plane] Gyro Compass: {bug_relative} degrees (Motor 1) [bug tracking]")
+                                            send_command('ESP_Gyrocompass', f"VALUE:1:{int(bug_relative)}")
+                                            last_values[f"ESP_Gyrocompass:1"] = bug_relative
                                 
-                                # For heading bug on ESP_Gyrocompass motor 1: calculate relative to compass
+                                # For heading bug on ESP_Gyrocompass motor 1: store desired heading
                                 if motor_id == 1 and esp_id == 'ESP_Gyrocompass':
-                                    # Bug angle = desired_bug_heading - current_compass_heading
+                                    # Store the desired bug heading (absolute)
+                                    bug_heading = final_value
+                                    bug_heading_valid = True
+                                    # Calculate relative angle for motor
                                     final_value = (final_value - compass_heading) % 360
+                                    if final_value > 180:
+                                        final_value -= 360
                                 
                                 last_val = last_values.get(key, -999)
                                 if abs(final_value - last_val) > 1:
