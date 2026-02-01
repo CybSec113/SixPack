@@ -3,7 +3,6 @@ import socket
 import time
 import struct
 import json
-from datetime import datetime
 from threading import Thread
 
 HEARTBEAT_PORT = 49002
@@ -54,31 +53,6 @@ def load_instrument_mapping():
         print(f"✗ No mapping file found: {MAPPING_FILE}")
     except Exception as e:
         print(f"✗ Error loading mapping: {e}")
-
-def airspeed_to_angle(airspeed):
-    """Convert airspeed to angle using calibration or linear fallback"""
-    if not calibration_points:
-        # Simple linear: 0 knots = 0°, 100 knots = 180°
-        return min(360, max(0, int(airspeed * 1.8)))
-    
-    # Extrapolate below minimum
-    if airspeed <= calibration_points[0]['value']:
-        return int(calibration_points[0]['angle'])
-    
-    # Extrapolate above maximum
-    if airspeed >= calibration_points[-1]['value']:
-        return int(calibration_points[-1]['angle'])
-    
-    # Interpolate between points
-    for i in range(len(calibration_points) - 1):
-        p1 = calibration_points[i]
-        p2 = calibration_points[i + 1]
-        if p1['value'] <= airspeed <= p2['value']:
-            ratio = (airspeed - p1['value']) / (p2['value'] - p1['value'])
-            angle = p1['angle'] + ratio * (p2['angle'] - p1['angle'])
-            return int(angle)
-    
-    return 0
 
 def save_devices():
     try:
@@ -167,8 +141,6 @@ def xplane_listener():
     last_values = {}
     last_logged_dref = {}
     motor_accumulator = {}
-    compass_heading = 0  # Current compass heading
-    xplane_timestamps = {}  # Track last X-Plane message time per instrument
     
     while True:
         try:
@@ -197,12 +169,11 @@ def xplane_listener():
                             found = True
                             
                             key = f"{esp_id}:{motor_id}"
-                            xplane_timestamps[key] = current_time
                             
                             # If motor has multiple DREFs, accumulate them
                             if motor_config.get('drefs'):
                                 if key not in motor_accumulator:
-                                    motor_accumulator[key] = {'count': 0, 'sum': 0, 'drefs': {}}
+                                    motor_accumulator[key] = {'sum': 0, 'drefs': {}}
                                 
                                 motor_accumulator[key]['drefs'][field] = value
                                 motor_accumulator[key]['sum'] = sum(motor_accumulator[key]['drefs'].values())
@@ -211,18 +182,10 @@ def xplane_listener():
                                 if len(motor_accumulator[key]['drefs']) == len(drefs_to_check):
                                     combined_value = motor_accumulator[key]['sum']
                                     
-                                    # Apply transform if specified
-                                    transform = motor_config.get('transform')
-                                    if transform == 'negate':
-                                        combined_value = -combined_value
-                                    
                                     # Normalize to 0-360
                                     combined_value = combined_value % 360
                                     if combined_value < 0:
                                         combined_value += 360
-                                    
-                                    # Update compass heading for bug calculation
-                                    compass_heading = combined_value
                                     
                                     last_val = last_values.get(key, -999)
                                     
@@ -235,19 +198,10 @@ def xplane_listener():
                                 # Single DREF - send directly
                                 final_value = value
                                 
-                                # Apply transform if specified
-                                transform = motor_config.get('transform')
-                                if transform == 'negate':
-                                    final_value = -final_value
-                                
                                 # Normalize to 0-360
                                 final_value = final_value % 360
                                 if final_value < 0:
                                     final_value += 360
-                                
-                                # Update compass heading if this is motor 0 of ESP_Gyrocompass
-                                if motor_id == 0 and esp_id == 'ESP_Gyrocompass':
-                                    compass_heading = final_value
                                 
                                 # For heading bug on ESP_Gyrocompass motor 1: add 180° offset (motor mounted opposite)
                                 if motor_id == 1 and esp_id == 'ESP_Gyrocompass':

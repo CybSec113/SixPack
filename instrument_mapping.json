@@ -29,12 +29,10 @@
       "unit": "feet",
       "motors": {
         "0": {
-          "dref": "sim/cockpit2/gauges/indicators/altitude_ft_pilot",
-          "transform": "negate"
+          "dref": "sim/cockpit2/gauges/indicators/altitude_ft_pilot"
         },
         "1": {
-          "dref": "sim/cockpit/misc/barometer_setting",
-          "transform": "negate"
+          "dref": "sim/cockpit/misc/barometer_setting"
         }
       }
     }
