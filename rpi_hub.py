@@ -212,21 +212,25 @@ def xplane_listener():
                                     
                                     # Send both motors when we have both values
                                     if gyro_data['heading'] is not None and gyro_data['bug'] is not None:
-                                        heading_val = gyro_data['heading']
+                                        # Calculate bug offset using original heading
                                         bug_offset = (gyro_data['bug'] - gyro_data['heading']) % 360
+                                        # Motor 0 is wired backwards, invert heading AFTER offset calculation
+                                        heading_val = (360 - gyro_data['heading']) % 360
+                                        # Also invert bug offset since motor 1 moves relative to inverted motor 0
+                                        bug_offset_inverted = (360 - bug_offset) % 360
                                         
                                         key0 = f"{esp_id}:0"
                                         key1 = f"{esp_id}:1"
                                         
-                                        if abs(heading_val - last_values.get(key0, -999)) > 1 or abs(bug_offset - last_values.get(key1, -999)) > 1:
-                                            print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset}° [bug={gyro_data['bug']}°]")
+                                        if abs(heading_val - last_values.get(key0, -999)) > 1 or abs(bug_offset_inverted - last_values.get(key1, -999)) > 1:
+                                            print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset_inverted}° [bug={gyro_data['bug']}°]")
                                             print(f"  → Sending: VALUE:0:{heading_val}")
-                                            print(f"  → Sending: VALUE:1:{bug_offset}")
+                                            print(f"  → Sending: VALUE:1:{bug_offset_inverted}")
                                             send_command(esp_id, f"VALUE:0:{heading_val}")
-                                            send_command(esp_id, f"VALUE:1:{bug_offset}")
-                                            notify_webserver_xplane(field, heading_val if motor_id == 0 else bug_offset, esp_id, motor_id)
+                                            send_command(esp_id, f"VALUE:1:{bug_offset_inverted}")
+                                            notify_webserver_xplane(field, heading_val if motor_id == 0 else bug_offset_inverted, esp_id, motor_id)
                                             last_values[key0] = heading_val
-                                            last_values[key1] = bug_offset
+                                            last_values[key1] = bug_offset_inverted
                                 else:
                                     # Non-gyro instruments
                                     last_val = last_values.get(key, -999)

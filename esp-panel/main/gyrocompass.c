@@ -154,13 +154,13 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     // Update sequence index
     if (state->direction > 0) {
         if (motor_id == 0) {
-            seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;
+            seq_idx[0] = (seq_idx[0] + 1) % seq_len;  // Motor 0 normal direction
         } else {
             seq_idx[1] = (seq_idx[1] + 1) % seq_len;  // Motor 1 reversed
         }
     } else {
         if (motor_id == 0) {
-            seq_idx[0] = (seq_idx[0] + 1) % seq_len;
+            seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;  // Motor 0 normal direction
         } else {
             seq_idx[1] = (seq_idx[1] - 1 + seq_len) % seq_len;  // Motor 1 reversed
         }
