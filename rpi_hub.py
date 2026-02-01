@@ -207,10 +207,8 @@ def xplane_listener():
                                 if esp_id == 'ESP_Gyrocompass':
                                     if motor_id == 0:
                                         gyro_data['heading'] = value
-                                        print(f"[RAW DREF] Gyro heading from X-Plane: {value}°")
                                     elif motor_id == 1:
                                         gyro_data['bug'] = value
-                                        print(f"[RAW DREF] Heading bug from X-Plane: {value}°")
                                     
                                     # Send both motors when we have both values
                                     if gyro_data['heading'] is not None and gyro_data['bug'] is not None:
@@ -222,8 +220,6 @@ def xplane_listener():
                                         
                                         if abs(heading_val - last_values.get(key0, -999)) > 1 or abs(bug_offset - last_values.get(key1, -999)) > 1:
                                             print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset}° [bug={gyro_data['bug']}°]")
-                                            print(f"  → Sending: VALUE:0:{heading_val}")
-                                            print(f"  → Sending: VALUE:1:{bug_offset}")
                                             send_command(esp_id, f"VALUE:0:{heading_val}")
                                             send_command(esp_id, f"VALUE:1:{bug_offset}")
                                             notify_webserver_xplane(field, heading_val if motor_id == 0 else bug_offset, esp_id, motor_id)
