@@ -156,13 +156,13 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
         if (motor_id == 0) {
             seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;
         } else {
-            seq_idx[1] = (seq_idx[1] - 1 + seq_len) % seq_len;
+            seq_idx[1] = (seq_idx[1] + 1) % seq_len;  // Motor 1 reversed
         }
     } else {
         if (motor_id == 0) {
             seq_idx[0] = (seq_idx[0] + 1) % seq_len;
         } else {
-            seq_idx[1] = (seq_idx[1] + 1) % seq_len;
+            seq_idx[1] = (seq_idx[1] - 1 + seq_len) % seq_len;  // Motor 1 reversed
         }
     }
     
@@ -419,8 +419,16 @@ static void udp_receiver_task(void *pvParameters)
                 if (sscanf(&rx_buffer[6], "%d:%d", &motor_id, &value) != 2) {
                     motor_id = 0;  // Default to motor 0 if not specified
                 }
-                int angle = value_to_angle(value);
-                ESP_LOGI(TAG, "Motor %d: Converted heading %d to angle %d degrees", motor_id, value, angle);
+                // Motor 0: gyro heading - convert through calibration
+                // Motor 1: heading bug offset - use value directly as angle
+                int angle;
+                if (motor_id == 0) {
+                    angle = value_to_angle(value);
+                    ESP_LOGI(TAG, "Motor %d: Converted heading %d to angle %d degrees", motor_id, value, angle);
+                } else {
+                    angle = value;  // Use offset directly
+                    ESP_LOGI(TAG, "Motor %d: Using offset %d degrees directly", motor_id, value);
+                }
                 motor_move_to(motor_id, angle, 0, 360);
             } else {
                 ESP_LOGW(TAG, "Failed to parse value from: %s", &rx_buffer[6]);

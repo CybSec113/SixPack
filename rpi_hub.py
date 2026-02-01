@@ -219,9 +219,11 @@ def xplane_listener():
                                         key1 = f"{esp_id}:1"
                                         
                                         if abs(heading_val - last_values.get(key0, -999)) > 1 or abs(bug_offset - last_values.get(key1, -999)) > 1:
+                                            print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset}° [bug={gyro_data['bug']}°]")
+                                            print(f"  → Sending: VALUE:0:{heading_val}")
+                                            print(f"  → Sending: VALUE:1:{bug_offset}")
                                             send_command(esp_id, f"VALUE:0:{heading_val}")
                                             send_command(esp_id, f"VALUE:1:{bug_offset}")
-                                            print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset}° [bug={gyro_data['bug']}°]")
                                             notify_webserver_xplane(field, heading_val if motor_id == 0 else bug_offset, esp_id, motor_id)
                                             last_values[key0] = heading_val
                                             last_values[key1] = bug_offset
