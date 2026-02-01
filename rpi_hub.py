@@ -207,15 +207,15 @@ def xplane_listener():
                                 if esp_id == 'ESP_Gyrocompass':
                                     if motor_id == 0:
                                         gyro_data['heading'] = value
+                                        print(f"[RAW DREF] Gyro heading from X-Plane: {value}°")
                                     elif motor_id == 1:
                                         gyro_data['bug'] = value
+                                        print(f"[RAW DREF] Heading bug from X-Plane: {value}°")
                                     
                                     # Send both motors when we have both values
                                     if gyro_data['heading'] is not None and gyro_data['bug'] is not None:
-                                        # Calculate bug offset using original heading
+                                        heading_val = gyro_data['heading']
                                         bug_offset = (gyro_data['bug'] - gyro_data['heading']) % 360
-                                        # Motor 0 is wired backwards, invert heading AFTER offset calculation
-                                        heading_val = (360 - gyro_data['heading']) % 360
                                         
                                         key0 = f"{esp_id}:0"
                                         key1 = f"{esp_id}:1"
