@@ -15,32 +15,7 @@ CALIBRATION_FILE = 'calibration.json'
 MAPPING_FILE = 'instrument_mapping.json'
 
 esp_devices = {}
-calibration_points = []
 instrument_mapping = {}
-
-def load_calibration():
-    """Load calibration points from file"""
-    global calibration_points
-    try:
-        with open(CALIBRATION_FILE, 'r') as f:
-            data = json.load(f)
-            if 'ESP_Airspeed' in data and 'points' in data['ESP_Airspeed']:
-                calibration_points = sorted(data['ESP_Airspeed']['points'], key=lambda p: p['value'])
-                print(f"✓ Loaded {len(calibration_points)} calibration points")
-                for p in calibration_points:
-                    print(f"    {p['value']} knots -> {p['angle']}°")
-            elif isinstance(data, list):
-                # Fallback for flat array format
-                calibration_points = sorted(data, key=lambda p: p['value'])
-                print(f"✓ Loaded {len(calibration_points)} calibration points")
-                for p in calibration_points:
-                    print(f"    {p['value']} knots -> {p['angle']}°")
-            else:
-                print(f"✗ Calibration format error")
-    except FileNotFoundError:
-        print(f"✗ No calibration file found: {CALIBRATION_FILE}")
-    except Exception as e:
-        print(f"✗ Error loading calibration: {e}")
 
 def load_instrument_mapping():
     """Load instrument mapping configuration"""
@@ -73,6 +48,14 @@ def parse_dref_message(data):
         return {'value': value, 'field': field}
     except:
         return None
+
+def send_dref_to_xplane(dataref_path, value, xplane_ip='127.0.0.1', xplane_port=49000):
+    """Send DREF command to X-Plane"""
+    message = b'DREF\x00' + struct.pack('<f', float(value)) + dataref_path.encode('utf-8') + b'\x00'
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(message, (xplane_ip, xplane_port))
+    sock.close()
+    print(f"→ X-Plane: {dataref_path} = {value}")
 
 def heartbeat_listener():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -150,7 +133,6 @@ def xplane_listener():
             if parsed:
                 field = parsed['field']
                 value = int(parsed['value'])
-                current_time = time.time()
                 
                 # Log DREF (once per unique field to reduce spam)
                 if field not in last_logged_dref:
@@ -158,7 +140,6 @@ def xplane_listener():
                     last_logged_dref[field] = True
                 
                 # Find instrument by DREF
-                found = False
                 for instrument_name, config in instrument_mapping.get('instruments', {}).items():
                     motors = config.get('motors', {})
                     for mid, motor_config in motors.items():
@@ -167,7 +148,6 @@ def xplane_listener():
                         if field in drefs_to_check:
                             esp_id = config.get('esp_id')
                             motor_id = int(mid)
-                            found = True
                             
                             key = f"{esp_id}:{motor_id}"
                             
@@ -234,8 +214,6 @@ def xplane_listener():
                                         notify_webserver_xplane(field, final_value, esp_id, motor_id)
                                         last_values[key] = final_value
                             break
-                    if found:
-                        break
         except Exception as e:
             print(f"X-Plane error: {e}")
 
@@ -318,7 +296,6 @@ def encoder_listener():
 
 if __name__ == "__main__":
     print("=== RPi Hub ===")
-    load_calibration()
     load_instrument_mapping()
     Thread(target=heartbeat_listener, daemon=True).start()
     Thread(target=check_offline, daemon=True).start()
