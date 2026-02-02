@@ -18,7 +18,12 @@
             cursor: pointer;
             transition: all 0.3s;
         }
+        .device-item.connected {
+            background: linear-gradient(135deg, #1a3a1a 0%, #2d2d2d 100%);
+            border: 2px solid #00aa00;
+        }
         .device-item:hover { background: #333; border-color: #0066cc; }
+        .device-item.connected:hover { background: linear-gradient(135deg, #226622 0%, #333 100%); border-color: #00ff00; }
         .xplane-item {
             background: linear-gradient(135deg, #1a3a1a 0%, #2d2d2d 100%);
             border: 2px solid #00aa00;
@@ -254,7 +259,7 @@
                             `;
                         } else {
                             return `
-                                <div class="device-item" onclick="selectDevice('${d.id}')">
+                                <div class="device-item connected" onclick="selectDevice('${d.id}')">
                                     <div class="device-name">${d.id}</div>
                                     <div class="device-info">IP: ${d.ip}</div>
                                     <div class="device-info">Last seen: ${d.last_seen}</div>

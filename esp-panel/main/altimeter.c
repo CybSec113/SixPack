@@ -105,7 +105,6 @@ static const cal_point_t calibration_motor1[7] = {
     {311,    216},     // 31.10 inHg at 216°
 };
 
-static const int calibration_count_motor0 = 10;
 static const int calibration_count_motor1 = 7;
 
 // Convert value to motor angle using calibration points
