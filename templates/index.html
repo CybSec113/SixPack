@@ -258,8 +258,9 @@
                                 </div>
                             `;
                         } else {
+                            const connectedClass = d.online ? 'connected' : '';
                             return `
-                                <div class="device-item connected" onclick="selectDevice('${d.id}')">
+                                <div class="device-item ${connectedClass}" onclick="selectDevice('${d.id}')">
                                     <div class="device-name">${d.id}</div>
                                     <div class="device-info">IP: ${d.ip}</div>
                                     <div class="device-info">Last seen: ${d.last_seen}</div>
