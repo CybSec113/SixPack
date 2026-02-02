@@ -293,7 +293,7 @@ def encoder_listener():
                                 # Total: 509 bytes
                                 dref_bytes = dref_path.encode('utf-8').ljust(500, b'\x00')
                                 message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_bytes
-                                xplane_sock.sendto(message, ('127.0.0.1', 49001))
+                                xplane_sock.sendto(message, ('127.0.0.1', 49000))
                                 xplane_sock.close()
                                 print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path} (message size: {len(message)} bytes)")
                             except Exception as e:
