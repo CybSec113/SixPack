@@ -35,6 +35,16 @@
           "dref": "sim/cockpit/misc/barometer_setting"
         }
       }
+    },
+    "ESP_Inputs": {
+      "esp_id": "ESP_Inputs",
+      "description": "Input Controls",
+      "encoders": {
+        "HEADING_BUG": {
+          "dref": "sim/cockpit2/autopilot/heading_dial_deg_mag_pilot",
+          "type": "relative"
+        }
+      }
     }
   }
 }

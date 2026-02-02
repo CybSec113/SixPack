@@ -245,6 +245,9 @@ def encoder_listener():
     sock.bind(('', ENCODER_PORT))
     print(f"Listening for encoder events on port {ENCODER_PORT}")
     
+    # Track current values for relative encoders
+    encoder_values = {}
+    
     while True:
         try:
             data, addr = sock.recvfrom(1024)
@@ -259,6 +262,39 @@ def encoder_listener():
                     button = parts[3]
                     
                     print(f"[ENCODER] {encoder_name}: value={value}, btn={button}")
+                    
+                    # Look up encoder configuration
+                    inputs_config = instrument_mapping.get('instruments', {}).get('ESP_Inputs', {})
+                    encoders = inputs_config.get('encoders', {})
+                    encoder_config = encoders.get(encoder_name)
+                    
+                    if encoder_config:
+                        dref_path = encoder_config.get('dref')
+                        encoder_type = encoder_config.get('type', 'relative')
+                        
+                        if encoder_type == 'relative':
+                            # Initialize if not exists
+                            if encoder_name not in encoder_values:
+                                encoder_values[encoder_name] = 0
+                            
+                            # Update value by the encoder delta
+                            encoder_values[encoder_name] = (encoder_values[encoder_name] + value) % 360
+                            if encoder_values[encoder_name] < 0:
+                                encoder_values[encoder_name] += 360
+                            
+                            new_value = encoder_values[encoder_name]
+                            print(f"[{encoder_name}] New value: {new_value}°")
+                            
+                            # Send to X-Plane via UDP
+                            try:
+                                xplane_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                                import struct
+                                message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_path.encode('utf-8')
+                                xplane_sock.sendto(message, ('127.0.0.1', 49000))
+                                xplane_sock.close()
+                                print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path}")
+                            except Exception as e:
+                                print(f"[ERROR] Failed to send to X-Plane: {e}")
                     
                     # Notify web_server for UI updates
                     try:
