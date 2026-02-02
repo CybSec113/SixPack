@@ -380,6 +380,8 @@
             
             for (let m = 0; m < motorCount; m++) {
                 const motorNum = m + 1;
+                const isAltimeter = espId === 'ESP_Altimeter' && m === 0;
+                
                 html += `
                     <div class="motor-section">
                         <h3>Motor ${motorNum}</h3>
@@ -392,6 +394,13 @@
                             <input type="range" min="0" max="360" value="0" id="cal-slider-motor-${m}">
                             <input type="number" id="cal-angle-motor-${m}" value="0" min="0" max="360">
                         </div>
+                        ${isAltimeter ? `
+                        <div class="slider-group">
+                            <label>Rotations:</label>
+                            <input type="number" id="cal-rotations-motor-${m}" value="0" min="-10" max="10" style="width: 80px;">
+                            <span style="font-size: 11px; color: #aaa;">(for zeroing)</span>
+                        </div>
+                        ` : ''}
                         <div class="slider-group" style="font-size: 11px;">
                             <label>Min:</label>
                             <input type="number" id="cal-min-motor-${m}" value="0" style="width: 50px;">
@@ -463,10 +472,14 @@
 
         function moveMotor(motorId = 0) {
             const angle = parseFloat(document.getElementById(`cal-angle-motor-${motorId}`).value);
+            const rotationsInput = document.getElementById(`cal-rotations-motor-${motorId}`);
+            const rotations = rotationsInput ? parseInt(rotationsInput.value) : 0;
+            const totalAngle = angle + (rotations * 360);
+            
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: angle, min_angle: 0, max_angle: 360 })
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: totalAngle, min_angle: -3600, max_angle: 3600 })
             });
         }
 
