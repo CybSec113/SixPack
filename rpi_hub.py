@@ -124,7 +124,6 @@ def xplane_listener():
     last_values = {}
     last_logged_dref = {}
     motor_accumulator = {}
-    gyro_data = {'heading': None, 'bug': None}  # Track both gyro values
     
     while True:
         try:
@@ -163,15 +162,13 @@ def xplane_listener():
                                 if len(motor_accumulator[key]['drefs']) == len(drefs_to_check):
                                     combined_value = motor_accumulator[key]['sum']
                                     
-                                    # Normalize to 0-360
-                                    combined_value = combined_value % 360
-                                    if combined_value < 0:
-                                        combined_value += 360
+                                    # Ignore values outside 0-360
+                                    if not (0 <= combined_value <= 360):
+                                        continue
                                     
-                                    last_val = last_values.get(key, -999)
-                                    
+                                    last_val = last_values.get(key, combined_value)
                                     if abs(combined_value - last_val) > 1:
-                                        print(f"[X-Plane] {instrument_name}: {combined_value} {config.get('unit', '')} (Motor {motor_id}) [XPlane: {motor_accumulator[key]['sum']}] [sum of {list(motor_accumulator[key]['drefs'].keys())}]")
+                                        print(f"[X-Plane] {instrument_name}: {combined_value} {config.get('unit', '')} (Motor {motor_id}) [sum of {list(motor_accumulator[key]['drefs'].keys())}]")
                                         send_command(esp_id, f"VALUE:{motor_id}:{combined_value}")
                                         notify_webserver_xplane(field, combined_value, esp_id, motor_id)
                                         last_values[key] = combined_value
@@ -183,36 +180,17 @@ def xplane_listener():
                                 if esp_id == 'ESP_Airspeed' and value > 200:
                                     continue
                                 
-                                # Gyrocompass: accumulate both motors and send together
-                                if esp_id == 'ESP_Gyrocompass':
-                                    if motor_id == 0:
-                                        gyro_data['heading'] = value
-                                    elif motor_id == 1:
-                                        gyro_data['bug'] = value
-                                    
-                                    # Send both motors when we have both values
-                                    if gyro_data['heading'] is not None and gyro_data['bug'] is not None:
-                                        heading_val = gyro_data['heading']
-                                        bug_offset = (gyro_data['bug'] - gyro_data['heading']) % 360
-                                        
-                                        key0 = f"{esp_id}:0"
-                                        key1 = f"{esp_id}:1"
-                                        
-                                        if abs(heading_val - last_values.get(key0, -999)) > 1 or abs(bug_offset - last_values.get(key1, -999)) > 1:
-                                            print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset}° [bug={gyro_data['bug']}°]")
-                                            send_command(esp_id, f"VALUE:0:{heading_val}")
-                                            send_command(esp_id, f"VALUE:1:{bug_offset}")
-                                            notify_webserver_xplane(field, heading_val if motor_id == 0 else bug_offset, esp_id, motor_id)
-                                            last_values[key0] = heading_val
-                                            last_values[key1] = bug_offset
-                                else:
-                                    # Non-gyro instruments
-                                    last_val = last_values.get(key, -999)
-                                    if abs(final_value - last_val) > 1:
-                                        print(f"[X-Plane] {instrument_name}: {final_value} {config.get('unit', '')} (Motor {motor_id}) [XPlane: {value}]")
-                                        send_command(esp_id, f"VALUE:{motor_id}:{final_value}")
-                                        notify_webserver_xplane(field, final_value, esp_id, motor_id)
-                                        last_values[key] = final_value
+                                # Gyrocompass only: Ignore values outside 0-360
+                                if esp_id == 'ESP_Gyrocompass' and not (0 <= final_value <= 360):
+                                    continue
+                                
+                                # Send to motor
+                                last_val = last_values.get(key, final_value)
+                                if abs(final_value - last_val) > 1:
+                                    print(f"[X-Plane] {instrument_name}: {final_value} {config.get('unit', '')} (Motor {motor_id})")
+                                    send_command(esp_id, f"VALUE:{motor_id}:{final_value}")
+                                    notify_webserver_xplane(field, final_value, esp_id, motor_id)
+                                    last_values[key] = final_value
                             break
         except Exception as e:
             print(f"X-Plane error: {e}")
