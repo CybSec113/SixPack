@@ -143,12 +143,15 @@ def xplane_listener():
                     last_logged_dref[field] = True
                 
                 # Find instrument by DREF
+                found_match = False
                 for instrument_name, config in instrument_mapping.get('instruments', {}).items():
                     motors = config.get('motors', {})
                     for mid, motor_config in motors.items():
                         # Check single dref or array of drefs
                         drefs_to_check = motor_config.get('drefs', [motor_config.get('dref')]) if motor_config.get('drefs') else [motor_config.get('dref')]
                         if field in drefs_to_check:
+                            found_match = True
+                            print(f"[DEBUG] Matched {field} to {instrument_name} motor {mid}")
                             esp_id = config.get('esp_id')
                             motor_id = int(mid)
                             
@@ -225,6 +228,9 @@ def xplane_listener():
                                         notify_webserver_xplane(field, final_value, esp_id, motor_id)
                                         last_values[key] = final_value
                             break
+                
+                if not found_match:
+                    print(f"[DEBUG] No instrument matched for DREF: {field}")
         except Exception as e:
             print(f"X-Plane error: {e}")
 
