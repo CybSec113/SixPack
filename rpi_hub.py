@@ -165,26 +165,24 @@ def xplane_listener():
                                     combined_value = motor_accumulator[key]['sum']
                                     
                                     # Ignore values outside 0-360
-                                    if not (0 <= combined_value <= 360):
-                                        continue
-                                    
-                                    last_val = last_values.get(key, combined_value)
-                                    if abs(combined_value - last_val) > 1:
-                                        print(f"[X-Plane] {instrument_name}: {combined_value} {config.get('unit', '')} (Motor {motor_id}) [sum of {list(motor_accumulator[key]['drefs'].keys())}]")
-                                        send_command(esp_id, f"VALUE:{motor_id}:{combined_value}")
-                                        notify_webserver_xplane(field, combined_value, esp_id, motor_id)
-                                        last_values[key] = combined_value
+                                    if 0 <= combined_value <= 360:
+                                        last_val = last_values.get(key, combined_value)
+                                        if abs(combined_value - last_val) > 1:
+                                            print(f"[X-Plane] {instrument_name}: {combined_value} {config.get('unit', '')} (Motor {motor_id}) [sum of {list(motor_accumulator[key]['drefs'].keys())}]")
+                                            send_command(esp_id, f"VALUE:{motor_id}:{combined_value}")
+                                            notify_webserver_xplane(field, combined_value, esp_id, motor_id)
+                                            last_values[key] = combined_value
                             else:
                                 # Single DREF - send directly
                                 final_value = value
                                 
                                 # Filter: Ignore airspeed values > 200 knots
                                 if esp_id == 'ESP_Airspeed' and value > 200:
-                                    continue
+                                    break
                                 
                                 # Gyrocompass only: Ignore values outside 0-360
                                 if esp_id == 'ESP_Gyrocompass' and not (0 <= final_value <= 360):
-                                    continue
+                                    break
                                 
                                 # Gyrocompass: Calculate bug offset from heading
                                 if esp_id == 'ESP_Gyrocompass':
