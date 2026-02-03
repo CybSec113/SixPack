@@ -130,10 +130,12 @@ def xplane_listener():
     while True:
         try:
             data, _ = sock.recvfrom(4096)
+            print(f"[DEBUG] Received {len(data)} bytes from X-Plane")  # Debug
             parsed = parse_dref_message(data)
             if parsed:
                 field = parsed['field']
                 value = int(parsed['value'])
+                print(f"[DEBUG] Parsed: {field} = {value}")  # Debug
                 
                 # Log DREF (once per unique field to reduce spam)
                 if field not in last_logged_dref:
