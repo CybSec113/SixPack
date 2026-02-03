@@ -130,12 +130,10 @@ def xplane_listener():
     while True:
         try:
             data, _ = sock.recvfrom(4096)
-            print(f"[DEBUG] Received {len(data)} bytes from X-Plane")  # Debug
             parsed = parse_dref_message(data)
             if parsed:
                 field = parsed['field']
                 value = int(parsed['value'])
-                print(f"[DEBUG] Parsed: {field} = {value}")  # Debug
                 
                 # Log DREF (once per unique field to reduce spam)
                 if field not in last_logged_dref:
@@ -143,15 +141,12 @@ def xplane_listener():
                     last_logged_dref[field] = True
                 
                 # Find instrument by DREF
-                found_match = False
                 for instrument_name, config in instrument_mapping.get('instruments', {}).items():
                     motors = config.get('motors', {})
                     for mid, motor_config in motors.items():
                         # Check single dref or array of drefs
                         drefs_to_check = motor_config.get('drefs', [motor_config.get('dref')]) if motor_config.get('drefs') else [motor_config.get('dref')]
                         if field in drefs_to_check:
-                            found_match = True
-                            print(f"[DEBUG] Matched {field} to {instrument_name} motor {mid}")
                             esp_id = config.get('esp_id')
                             motor_id = int(mid)
                             
@@ -181,22 +176,16 @@ def xplane_listener():
                                 # Single DREF - send directly
                                 final_value = value
                                 
-                                # Filter: Ignore airspeed values > 200 knots
-                                if esp_id == 'ESP_Airspeed' and value > 200:
-                                    break
-                                
-                                # Gyrocompass only: Ignore values outside 0-360
-                                if esp_id == 'ESP_Gyrocompass' and not (0 <= final_value <= 360):
-                                    break
-                                
                                 # Gyrocompass: Calculate bug offset from heading
                                 if esp_id == 'ESP_Gyrocompass':
+                                    # Ignore values outside 0-360
+                                    if not (0 <= final_value <= 360):
+                                        break
+                                    
                                     if motor_id == 0:
                                         gyro_heading = final_value
-                                        print(f"[DEBUG] Gyro heading updated: {gyro_heading}")
                                     elif motor_id == 1:
                                         gyro_bug = final_value
-                                        print(f"[DEBUG] Gyro bug updated: {gyro_bug}")
                                     
                                     # Send both motors when we have both values
                                     if gyro_heading is not None and gyro_bug is not None:
@@ -206,21 +195,19 @@ def xplane_listener():
                                         key0 = f"{esp_id}:0"
                                         key1 = f"{esp_id}:1"
                                         
-                                        last_heading = last_values.get(key0, heading_val)
-                                        last_bug = last_values.get(key1, bug_offset)
-                                        print(f"[DEBUG] heading_val={heading_val} (last={last_heading}), bug_offset={bug_offset} (last={last_bug})")
-                                        
-                                        if abs(heading_val - last_heading) > 1 or abs(bug_offset - last_bug) > 1:
+                                        if abs(heading_val - last_values.get(key0, heading_val)) > 1 or abs(bug_offset - last_values.get(key1, bug_offset)) > 1:
                                             print(f"[X-Plane] Gyrocompass: heading={heading_val}° bug_offset={bug_offset}° [bug={gyro_bug}°]")
                                             send_command(esp_id, f"VALUE:0:{heading_val}")
                                             send_command(esp_id, f"VALUE:1:{bug_offset}")
                                             notify_webserver_xplane(field, heading_val if motor_id == 0 else bug_offset, esp_id, motor_id)
                                             last_values[key0] = heading_val
                                             last_values[key1] = bug_offset
-                                        else:
-                                            print(f"[DEBUG] Gyro change too small, skipping")
                                 else:
-                                    # Non-gyro instruments
+                                    # All other instruments
+                                    # Filter: Ignore airspeed values > 200 knots
+                                    if esp_id == 'ESP_Airspeed' and value > 200:
+                                        break
+                                    
                                     last_val = last_values.get(key, final_value)
                                     if abs(final_value - last_val) > 1:
                                         print(f"[X-Plane] {instrument_name}: {final_value} {config.get('unit', '')} (Motor {motor_id})")
@@ -228,9 +215,6 @@ def xplane_listener():
                                         notify_webserver_xplane(field, final_value, esp_id, motor_id)
                                         last_values[key] = final_value
                             break
-                
-                if not found_match:
-                    print(f"[DEBUG] No instrument matched for DREF: {field}")
         except Exception as e:
             print(f"X-Plane error: {e}")
 
