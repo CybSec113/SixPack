@@ -50,6 +50,11 @@ static const char *TAG = "udp_receiver";
 
 static int current_position_steps[2] = {0, 0};  // Track position in steps for motor 0 and 1
 static int seq_idx[2] = {0, 0};
+static int heading_bug_target = 0;  // Target compass heading for bug (0-360)
+static int current_compass_heading = 0;  // Current heading displayed by motor 0
+
+// Forward declaration
+static void motor_move_to(int motor_id, int target_angle, int min_angle, int max_angle);
 
 // Motor state for hardware timer control
 typedef struct {
@@ -423,16 +428,26 @@ static void udp_receiver_task(void *pvParameters)
                     motor_id = 0;  // Default to motor 0 if not specified
                 }
                 // Motor 0: gyro heading - convert through calibration
-                // Motor 1: heading bug offset - use value directly as angle
+                // Motor 1: heading bug - calculate relative to motor 0
                 int angle;
                 if (motor_id == 0) {
+                    current_compass_heading = value;  // Store the heading value
                     angle = value_to_angle(value);
                     ESP_LOGI(TAG, "Motor %d: Converted heading %d to angle %d degrees", motor_id, value, angle);
+                    motor_move_to(motor_id, angle, 0, 360);
+                    
+                    // Update bug position immediately if bug target is set
+                    if (heading_bug_target >= 0) {
+                        int bug_angle = (heading_bug_target - current_compass_heading + 360) % 360;
+                        motor_move_to(1, bug_angle, 0, 360);
+                    }
                 } else {
-                    angle = value;  // Use offset directly
-                    ESP_LOGI(TAG, "Motor %d: Using offset %d degrees directly", motor_id, value);
+                    // Motor 1: Store target heading and calculate bug position relative to compass rose
+                    heading_bug_target = value;
+                    angle = (value - current_compass_heading + 360) % 360;
+                    ESP_LOGI(TAG, "Motor %d: Bug heading %d, compass %d, relative angle %d degrees", motor_id, value, current_compass_heading, angle);
+                    motor_move_to(motor_id, angle, 0, 360);
                 }
-                motor_move_to(motor_id, angle, 0, 360);
             } else {
                 ESP_LOGW(TAG, "Failed to parse value from: %s", &rx_buffer[6]);
             }
