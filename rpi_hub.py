@@ -212,6 +212,7 @@ def encoder_listener():
     
     # Track current values for relative encoders
     encoder_values = {}
+    encoder_last_raw = {}  # Track last raw value to calculate delta
     
     while True:
         try:
@@ -242,13 +243,21 @@ def encoder_listener():
                             if encoder_name not in encoder_values:
                                 encoder_values[encoder_name] = 0
                             
-                            # Update value by the encoder delta
-                            encoder_values[encoder_name] = (encoder_values[encoder_name] + value) % 360
+                            # Calculate delta from last raw value
+                            if encoder_name in encoder_last_raw:
+                                delta = value - encoder_last_raw[encoder_name]
+                            else:
+                                delta = 0  # First reading, no delta
+                            
+                            encoder_last_raw[encoder_name] = value
+                            
+                            # Update accumulated heading by delta
+                            encoder_values[encoder_name] = (encoder_values[encoder_name] + delta) % 360
                             if encoder_values[encoder_name] < 0:
                                 encoder_values[encoder_name] += 360
                             
                             new_value = encoder_values[encoder_name]
-                            print(f"[{encoder_name}] New value: {new_value}°")
+                            print(f"[{encoder_name}] Raw={value}, Delta={delta}, New heading={new_value}°")
                             
                             # Send to X-Plane via UDP
                             try:
