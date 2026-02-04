@@ -252,13 +252,11 @@ def encoder_listener():
                             try:
                                 xplane_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                                 import struct
-                                # DREF message format: "DREF\0" (5 bytes) + float (4 bytes) + dref_path+null+spaces (500 bytes)
-                                # Total: 509 bytes
-                                dref_bytes = (dref_path.encode('utf-8') + b'\x00').ljust(500, b' ')
-                                message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_bytes
+                                # DREF format: "DREF\0" (5 bytes) + float (4 bytes) + "dref_path\0"
+                                message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_path.encode('utf-8') + b'\x00'
                                 xplane_sock.sendto(message, ('127.0.0.1', 49000))
                                 xplane_sock.close()
-                                print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path} (message size: {len(message)} bytes)")
+                                print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path}")
                             except Exception as e:
                                 print(f"[ERROR] Failed to send to X-Plane: {e}")
                     
