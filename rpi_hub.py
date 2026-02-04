@@ -8,6 +8,8 @@ from threading import Thread
 HEARTBEAT_PORT = 49002
 COMMAND_PORT = 49003
 XPLANE_PORT = 49001
+XPLANE_IP = '192.168.5.57'  # X-Plane host IP
+XPLANE_SEND_PORT = 49000  # Port for sending commands to X-Plane
 ENCODER_PORT = 49004  # New: Inputs ESP sends encoder events here
 TIMEOUT = 30  # Increased from 15 to 30 seconds
 DEVICES_FILE = 'esp_devices.json'
@@ -254,7 +256,7 @@ def encoder_listener():
                                 import struct
                                 # DREF format: "DREF\0" (5 bytes) + float (4 bytes) + "dref_path\0"
                                 message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_path.encode('utf-8') + b'\x00'
-                                xplane_sock.sendto(message, ('127.0.0.1', 49000))
+                                xplane_sock.sendto(message, (XPLANE_IP, XPLANE_SEND_PORT))
                                 xplane_sock.close()
                                 print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path}")
                             except Exception as e:
