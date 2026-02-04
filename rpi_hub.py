@@ -252,9 +252,9 @@ def encoder_listener():
                             try:
                                 xplane_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                                 import struct
-                                # DREF message format: "DREF\0" (5 bytes) + float (4 bytes) + dref string (500 bytes, null-padded)
+                                # DREF message format: "DREF\0" (5 bytes) + float (4 bytes) + dref_path+null+spaces (500 bytes)
                                 # Total: 509 bytes
-                                dref_bytes = dref_path.encode('utf-8').ljust(500, b'\x00')
+                                dref_bytes = (dref_path.encode('utf-8') + b'\x00').ljust(500, b' ')
                                 message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_bytes
                                 xplane_sock.sendto(message, ('127.0.0.1', 49000))
                                 xplane_sock.close()

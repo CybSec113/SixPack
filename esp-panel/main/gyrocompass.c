@@ -48,7 +48,7 @@ static const char *TAG = "udp_receiver";
 #define MOTOR_STEP_PERIOD_US 5000  // 5ms = 200 steps/second for full step mode
 #define RESOLUTION_MODE 0  // 0=full step only (no half-stepping)
 
-static float current_position[2] = {0, 0};  // Track position for motor 0 and 1
+static int current_position_steps[2] = {0, 0};  // Track position in steps for motor 0 and 1
 static int seq_idx[2] = {0, 0};
 
 // Motor state for hardware timer control
@@ -168,10 +168,17 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     
     state->steps_remaining--;
     
+    // Update position in steps
+    if (state->direction > 0) {
+        current_position_steps[motor_id]++;
+    } else {
+        current_position_steps[motor_id]--;
+    }
+    
     if (state->steps_remaining <= 0) {
         state->active = false;
-        current_position[motor_id] = state->target_angle;
-        ESP_LOGI(TAG, "Motor %d reached target: %d°", motor_id, state->target_angle);
+        int final_angle = (current_position_steps[motor_id] * 360) / 2048;
+        ESP_LOGI(TAG, "Motor %d reached target: %d° (steps: %d)", motor_id, final_angle, current_position_steps[motor_id]);
         return false;  // Stop timer
     }
     
@@ -248,22 +255,17 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     if (target_angle < min_angle) target_angle = min_angle;
     if (target_angle > max_angle) target_angle = max_angle;
     
-    int current = (int)current_position[motor_id];
-    int diff = target_angle - current;
+    // Convert current position from steps to degrees
+    int current_angle = (current_position_steps[motor_id] * 360) / 2048;
     
-    if (diff == 0) {
-        ESP_LOGI(TAG, "Motor %d already at target: %d°", motor_id, target_angle);
-        return;
-    }
-    
-    // Normalize and use shortest path for 360-degree instruments
+    // Normalize angles to 0-360
     int target_norm = target_angle % 360;
     if (target_norm < 0) target_norm += 360;
-    int current_norm = current % 360;
+    int current_norm = current_angle % 360;
     if (current_norm < 0) current_norm += 360;
     
-    diff = target_norm - current_norm;
-    
+    // Calculate shortest path
+    int diff = target_norm - current_norm;
     if (diff > 180) {
         diff = diff - 360;
     } else if (diff < -180) {
@@ -271,15 +273,16 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     }
     
     if (diff == 0) {
+        ESP_LOGI(TAG, "Motor %d already at target: %d°", motor_id, target_angle);
         return;
     }
     
-    // Full step mode: 2048 steps per 360 degrees
-    int steps = (int)(abs(diff) / (360.0 / 2048));
+    // Calculate steps needed (2048 steps per 360 degrees)
+    int steps = (abs(diff) * 2048) / 360;
     int direction = (diff >= 0) ? 1 : -1;
     
-    ESP_LOGI(TAG, "Motor %d START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
-             motor_id, current, target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
+    ESP_LOGI(TAG, "Motor %d START: current=%d° (steps:%d), target=%d° (diff: %d°, steps: %d, dir: %s)", 
+             motor_id, current_norm, current_position_steps[motor_id], target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
     
     // Stop any existing movement
     if (motor_state[motor_id].active) {
@@ -452,7 +455,7 @@ static void udp_receiver_task(void *pvParameters)
         } else if (strncmp(rx_buffer, "ZERO:", 5) == 0) {
             int motor_id = 0;
             sscanf(&rx_buffer[5], "%d", &motor_id);
-            current_position[motor_id] = 0;
+            current_position_steps[motor_id] = 0;
             seq_idx[motor_id] = 0;
             ESP_LOGI(TAG, "Motor %d zeroed to 0 degrees", motor_id);
         }
