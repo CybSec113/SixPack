@@ -18,6 +18,7 @@ MAPPING_FILE = 'instrument_mapping.json'
 
 esp_devices = {}
 instrument_mapping = {}
+xplane_bug_heading = {}  # Shared between xplane_listener and encoder_listener
 
 def load_instrument_mapping():
     """Load instrument mapping configuration"""
@@ -135,6 +136,10 @@ def xplane_listener():
                 field = parsed['field']
                 value = int(parsed['value'])
                 
+                # Update global bug heading if this is the heading bug dataref
+                if field == 'sim/cockpit2/autopilot/heading_dial_deg_mag_pilot':
+                    xplane_bug_heading['EC11_HdgBug'] = value
+                
                 # Log DREF (once per unique field to reduce spam)
                 if field not in last_logged_dref:
                     print(f"[DREF] Received: {field} = {value}")
@@ -210,9 +215,8 @@ def encoder_listener():
     sock.bind(('', ENCODER_PORT))
     print(f"Listening for encoder events on port {ENCODER_PORT}")
     
-    # Track current values for relative encoders
-    encoder_values = {}
-    encoder_last_raw = {}  # Track last raw value to calculate delta
+    # Track last raw encoder positions
+    encoder_last_raw = {}
     
     while True:
         try:
@@ -239,10 +243,6 @@ def encoder_listener():
                         encoder_type = encoder_config.get('type', 'relative')
                         
                         if encoder_type == 'relative':
-                            # Initialize if not exists
-                            if encoder_name not in encoder_values:
-                                encoder_values[encoder_name] = 0
-                            
                             # Calculate delta from last raw value
                             if encoder_name in encoder_last_raw:
                                 delta = value - encoder_last_raw[encoder_name]
@@ -251,27 +251,32 @@ def encoder_listener():
                             
                             encoder_last_raw[encoder_name] = value
                             
-                            # Update accumulated heading by delta
-                            encoder_values[encoder_name] = (encoder_values[encoder_name] + delta) % 360
-                            if encoder_values[encoder_name] < 0:
-                                encoder_values[encoder_name] += 360
-                            
-                            new_value = encoder_values[encoder_name]
-                            print(f"[{encoder_name}] Raw={value}, Delta={delta}, New heading={new_value}°")
-                            
-                            # Send to X-Plane via UDP
-                            try:
-                                xplane_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                                import struct
-                                # DREF format: "DREF\0" (5 bytes) + float (4 bytes) + dref_path (500 bytes, null-terminated then space-padded)
-                                # Total: 509 bytes
-                                dref_bytes = (dref_path.encode('utf-8') + b'\x00').ljust(500, b' ')
-                                message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_bytes
-                                xplane_sock.sendto(message, (XPLANE_IP, XPLANE_SEND_PORT))
-                                xplane_sock.close()
-                                print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path}")
-                            except Exception as e:
-                                print(f"[ERROR] Failed to send to X-Plane: {e}")
+                            if delta != 0:
+                                # Get current bug heading from X-Plane data
+                                if encoder_name not in xplane_bug_heading:
+                                    xplane_bug_heading[encoder_name] = 0  # Default if not yet received
+                                
+                                # Add delta to current heading
+                                new_value = (xplane_bug_heading[encoder_name] + delta) % 360
+                                if new_value < 0:
+                                    new_value += 360
+                                
+                                xplane_bug_heading[encoder_name] = new_value
+                                print(f"[{encoder_name}] Delta={delta}, New heading={new_value}°")
+                                
+                                # Send to X-Plane via UDP
+                                try:
+                                    xplane_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                                    import struct
+                                    # DREF format: "DREF\0" (5 bytes) + float (4 bytes) + dref_path (500 bytes, null-terminated then space-padded)
+                                    # Total: 509 bytes
+                                    dref_bytes = (dref_path.encode('utf-8') + b'\x00').ljust(500, b' ')
+                                    message = b"DREF\x00" + struct.pack('<f', float(new_value)) + dref_bytes
+                                    xplane_sock.sendto(message, (XPLANE_IP, XPLANE_SEND_PORT))
+                                    xplane_sock.close()
+                                    print(f"[X-PLANE] Sent {encoder_name}: {new_value}° to {dref_path}")
+                                except Exception as e:
+                                    print(f"[ERROR] Failed to send to X-Plane: {e}")
                     
                     # Notify web_server for UI updates
                     try:
