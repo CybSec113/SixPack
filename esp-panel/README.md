@@ -10,135 +10,175 @@ ESP32 firmware for controlling stepper motor-driven aircraft instruments. Each E
 This firmware enables an ESP32-C3 to:
 - Receive real-time X-Plane data values via UDP (port 49003)
 - Convert values to stepper motor angles using calibration curves
-- Control up to 2 × 28BYJ-48 stepper motors via ULN2003 modules
+- Control 1-2 × 28BYJ-48 stepper motors via ULN2003 modules
 - Send periodic heartbeat messages to the Raspberry Pi hub (port 49002)
-- Support WiFi logging via TCP (port 9998/9999)
-- Support multiple instrument types (airspeed, heading, altitude, VSI, attitude, turn indicator)
+- Support WiFi logging via TCP (port 9998)
+
+## Supported Instruments
+
+| Instrument | ESP_ID | Motors | X-Plane DREF |
+|------------|--------|--------|--------------|
+| Airspeed | ESP_Airspeed | 1 | `sim/flightmodel/position/indicated_airspeed` |
+| Gyro Compass | ESP_Gyrocompass | 2 | `sim/cockpit2/gauges/indicators/heading_vacuum_deg_mag_pilot` |
+| Altimeter | ESP_Altimeter | 2 | `sim/cockpit2/gauges/indicators/altitude_ft_pilot` |
+| Vertical Speed | ESP_VertSpeed | 1 | `sim/cockpit2/gauges/indicators/vvi_fpm_pilot` |
 
 ## Quick Start
-
-For detailed build instructions for each instrument type, see [BUILD_INSTRUMENTS.md](BUILD_INSTRUMENTS.md).
 
 ### Prerequisites
 
 1. [Install ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/get-started/)
 2. ESP32-C3 development board
 3. 28BYJ-48 stepper motor(s) with ULN2003 controller(s)
-4. Connected to same WiFi as Raspberry Pi hub
+4. WiFi network (same as Raspberry Pi hub)
 
-### Build for Gyrocompass (Dual Motor)
+### Build and Flash
 
 ```bash
 source <ESP-IDF-PATH>/export.sh
 idf.py set-target esp32c3
 idf.py menuconfig
-# Select: Instrument Configuration → Gyro Compass / Heading
+# Select: Instrument Configuration → [Choose instrument]
+# Set: WiFi SSID, Password, RPI IP, ESP Device ID
 idf.py build
 idf.py -p /dev/tty.usbmodem13301 flash monitor
 ```
 
-### Monitor Logs via WiFi
-
-While serial monitor also works, you can stream logs over TCP:
+### Using sdkconfig Defaults
 
 ```bash
-# Terminal 1: Listen for logs (Gyrocompass on 9999)
-nc -l 9999
-
-# Terminal 2: Monitor serial output
-idf.py monitor
+cp sdkconfig.defaults.esp32c3.airspeed sdkconfig.defaults
+idf.py build flash monitor
 ```
 
-## Firmware Architecture
+## Instrument Specifications
 
-### Dual Motor Support
-Instruments can control 1 or 2 motors concurrently:
-- **Motor 0**: Primary instrument (compass rose, airspeed needle, etc.)
-- **Motor 1**: Secondary (heading bug, attitude offset, etc.)
+### Airspeed Indicator
+- **Range**: 40-200 knots
+- **Calibration**: 40kt→32°, 100kt→161°, 200kt→315°
+- **Motors**: 1
 
-Each motor has its own FreeRTOS task and queue for parallel movement.
+### Gyro Compass
+- **Range**: 0-360°
+- **Motors**: 2 (Motor 0: compass rose, Motor 1: heading bug)
 
-### Calibration
-Calibration is hardcoded per instrument type. The `value_to_angle()` function performs linear interpolation between calibration points.
+### Altimeter
+- **Range**: 0-10,000+ feet
+- **Motors**: 2 (Motor 0: altitude needle, Motor 1: barometer setting)
 
-**Example (Airspeed):**
-- 40 knots → 32°
-- 100 knots → 161°
-- 200 knots → 315°
+### Vertical Speed Indicator (VSI)
+- **Range**: -2000 to +2000 fpm
+- **Zero Position**: 270° (9 o'clock)
+- **+2000 fpm**: 85° (175° CW from zero)
+- **-2000 fpm**: 95° (175° CCW from zero)
+- **Motors**: 1
+- **Calibration**:
+  - -2000 fpm → 95°
+  - -1000 fpm → 182°
+  - 0 fpm → 270°
+  - +1000 fpm → 358°
+  - +2000 fpm → 85°
 
-### Motor Control
-- **Resolution**: Full stepping (4-step sequence, 2048 steps/360°)
-- **Speed**: 10ms delay between steps
-- **Parallel Execution**: Both motors step independently
+## Hardware Connections
 
-### UDP Protocol
+### Motor Pinout (All Instruments)
+```
+ESP32-C3    ULN2003
+GPIO 3  →   IN1
+GPIO 4  →   IN2
+GPIO 5  →   IN3
+GPIO 6  →   IN4
+```
 
-**Incoming Commands (from rpi_hub):**
-- `VALUE:0:75` - Motor 0: Convert 75 knots to angle
-- `VALUE:1:45` - Motor 1: Convert 45° (heading bug) to angle
-- `ANGLE:0:180` - Motor 0: Move directly to 180°
-- `ZERO:0` - Motor 0: Reset to 0°
+### Power
+- ESP32: USB 5V
+- Stepper motors: External 5V supply (ULN2003 VCC)
 
-**Outgoing:**
-- `HEARTBEAT:ESP_Gyrocompass:12345` - Every 5 seconds (uptime in seconds)
+## UDP Protocol
+
+### Incoming Commands (from rpi_hub)
+```
+VALUE:0:75      # Motor 0: Convert value (75 knots/fpm/degrees) to angle
+VALUE:1:45      # Motor 1: Convert value to angle
+ANGLE:0:180     # Motor 0: Move directly to 180°
+ZERO:0          # Motor 0: Reset to zero position
+```
+
+### Outgoing (to rpi_hub)
+```
+HEARTBEAT:ESP_Airspeed:12345    # Every 5 seconds (uptime in seconds)
+```
+
+## Testing
+
+From `rpi_hub.py` command line:
+```bash
+# Airspeed
+ESP_Airspeed:0:VALUE:100
+
+# VSI
+ESP_VertSpeed:0:VALUE:0      # Zero (270°)
+ESP_VertSpeed:0:VALUE:1000   # +1000 fpm
+ESP_VertSpeed:0:VALUE:-1000  # -1000 fpm
+
+# Gyro Compass
+ESP_Gyrocompass:0:VALUE:180  # Compass rose to 180°
+ESP_Gyrocompass:1:VALUE:90   # Heading bug to 90°
+```
+
+## Configuration
+
+Run `idf.py menuconfig` to set:
+- **WiFi Configuration**: SSID and password
+- **Network Configuration**: RPi IP address and ESP Device ID
+- **Instrument Configuration**: Select instrument type
 
 ## Motor Specifications
 
 | Parameter | Value |
 |-----------|-------|
-| Resolution | Full step (4-step) |
+| Resolution | Full step (4-step sequence) |
 | Steps per revolution | 2048 |
-| Delay per step | 10ms |
-| Full rotation time | ~204ms |
+| Step period | 5ms |
+| Full rotation time | ~10 seconds |
 | Max concurrent motors | 2 |
-
-## Adding New Instruments
-
-See [BUILD_INSTRUMENTS.md](BUILD_INSTRUMENTS.md#adding-new-instruments).
-
-Quick summary:
-1. Add Kconfig option in `main/Kconfig.projbuild`
-2. Add calibration array in appropriate source file
-3. Configure and build
-
-## Configuration
-
-Run `idf.py menuconfig` to set:
-
-- **WiFi SSID & Password**: Network details
-- **RPi IP Address**: Hub location (e.g., 192.168.1.100)
-- **ESP Device ID**: Unique name (e.g., ESP_Gyrocompass)
-- **Instrument Type**: Select from configured options
-
-## WiFi Logging
-
-Logs stream to TCP after WiFi connects:
-
-```bash
-# Python listener (auto-reconnect friendly)
-python3 receive_logs.py <ESP_IP> 9999
-```
-
-Ports by instrument:
-- Gyrocompass: `9999`
-- Airspeed: `9998`
 
 ## Debugging
 
-Monitor serial output:
+### Serial Monitor
 ```bash
 idf.py monitor
 ```
 
+### WiFi Logging
+Logs stream to TCP port 9998 after WiFi connects:
+```bash
+nc <ESP_IP> 9998
+```
+
 Watch for:
-- `WiFi logging server listening on port XXXX`
 - `Got IP: 192.168.x.x`
 - `Heartbeat task started`
-- Motor 0 & 1 task creation
-- `Received: VALUE:` and command processing
+- `Socket bound, listening on port 49003`
+- `Received: VALUE:` command processing
+- `Motor START: current=X°, target=Y°`
 
-## Hardware Connections
-````
-<userPrompt>
-Provide the fully rewritten file, incorporating the suggested code change. You must produce the complete file.
-</userPrompt>
+## Adding New Instruments
+
+See [BUILD_INSTRUMENTS.md](BUILD_INSTRUMENTS.md) for detailed instructions.
+
+Summary:
+1. Create `main/newinstrument.c` with calibration array
+2. Add Kconfig option in `main/Kconfig.projbuild`
+3. Update `main/CMakeLists.txt`
+4. Create `sdkconfig.defaults.esp32c3.newinstrument`
+5. Update `instrument_mapping.json`
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| WiFi connection fails | Check SSID/password in menuconfig |
+| No heartbeats | Verify RPI_IP and network connectivity |
+| Motors don't move | Check UDP port 49003, verify wiring |
+| Erratic movement | Check power supply, ensure 5V for motors |

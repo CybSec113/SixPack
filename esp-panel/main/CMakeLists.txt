@@ -8,6 +8,8 @@ elseif(CONFIG_INSTRUMENT_ALTIMETER)
     list(APPEND SRCS "altimeter.c")
 elseif(CONFIG_INSTRUMENT_INPUTS)
     list(APPEND SRCS "inputs.c")
+elseif(CONFIG_INSTRUMENT_VERTSPEED)
+    list(APPEND SRCS "vertspeed.c")
 endif()
 
 idf_component_register(SRCS ${SRCS}

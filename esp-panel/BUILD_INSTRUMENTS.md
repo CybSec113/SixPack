@@ -31,7 +31,7 @@ idf.py -p /dev/tty.usbmodem13301 flash monitor
 | Altimeter | ESP_Altitude | 1 | `CONFIG_INSTRUMENT_ALTITUDE=y` |
 | Turn Coordinator | ESP_TurnIndicator | 1 | `CONFIG_INSTRUMENT_TURN=y` |
 | Gyro Compass | ESP_Gyrocompass | 2 | `CONFIG_INSTRUMENT_GYRO_COMPASS=y` |
-| Vertical Speed | ESP_VSI | 1 | `CONFIG_INSTRUMENT_VSI=y` |
+| Vertical Speed | ESP_VertSpeed | 1 | `CONFIG_INSTRUMENT_VERTSPEED=y` |
 
 ## Example: Building Gyrocompass (Dual Motor)
 

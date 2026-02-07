@@ -30,7 +30,7 @@ INSTRUMENT_METADATA = {
     'ESP_Altimeter': {'motor_count': 2, 'type': 'altimeter'},
     'ESP_TurnIndicator': {'motor_count': 1, 'type': 'turn'},
     'ESP_Gyrocompass': {'motor_count': 2, 'type': 'heading'},
-    'ESP_VSI': {'motor_count': 1, 'type': 'vsi'},
+    'ESP_VertSpeed': {'motor_count': 1, 'type': 'vsi'},
     'ESP_Inputs': {'motor_count': 0, 'type': 'inputs'},
 }
 
@@ -119,7 +119,7 @@ def get_devices():
         'ESP_Altimeter',
         'ESP_TurnIndicator',
         'ESP_Gyrocompass',
-        'ESP_VSI',
+        'ESP_VertSpeed',
         'ESP_Inputs',
     ]
     

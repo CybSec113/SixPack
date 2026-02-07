@@ -45,6 +45,16 @@
           "type": "relative"
         }
       }
+    },
+    "ESP_VertSpeed": {
+      "esp_id": "ESP_VertSpeed",
+      "description": "Vertical Speed Indicator",
+      "unit": "fpm",
+      "motors": {
+        "0": {
+          "dref": "sim/cockpit2/gauges/indicators/vvi_fpm_pilot"
+        }
+      }
     }
   }
 }
