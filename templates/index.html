@@ -279,6 +279,8 @@
                             console.log('Updating encoder display:', device.encoders);
                             renderEncoderDisplay(device);
                         }
+                    } else if (currentDevice === 'X-Plane') {
+                        renderDrefDisplay();
                     }
                 });
         }
@@ -286,7 +288,7 @@
         function selectDevice(espId) {
             currentDevice = espId;
             
-            // Don't allow calibration edit for X-Plane
+            // Show DREF data for X-Plane
             if (espId === 'X-Plane') {
                 fetch('/api/devices')
                     .then(r => r.json())
@@ -298,9 +300,11 @@
                             document.getElementById('cal-device-lastseen').textContent = 'Real-time';
                             document.getElementById('cal-device-uptime').textContent = 'Active';
                             
-                            // Hide motor controls and calibration for X-Plane
                             document.querySelector('.controls').style.display = 'none';
                             document.querySelector('.calibration').style.display = 'none';
+                            document.getElementById('encoder-display').classList.add('active');
+                            
+                            renderDrefDisplay();
                             
                             document.getElementById('landing-page').style.display = 'none';
                             document.getElementById('calibration-page').classList.add('active');
@@ -378,6 +382,28 @@
             }
             
             document.getElementById('encoder-display').innerHTML = html;
+        }
+
+        function renderDrefDisplay() {
+            fetch('/api/drefs')
+                .then(r => r.json())
+                .then(drefs => {
+                    let html = '';
+                    if (drefs.length === 0) {
+                        html = '<div style="color: #aaa; padding: 20px; text-align: center;">No DREF data received yet...</div>';
+                    } else {
+                        drefs.forEach(d => {
+                            html += `
+                                <div class="encoder-item">
+                                    <div class="encoder-name">${d.dref}</div>
+                                    <div class="encoder-value">${d.value.toFixed(2)}</div>
+                                    <div style="font-size: 12px; color: #aaa;">${d.elapsed.toFixed(1)}s ago</div>
+                                </div>
+                            `;
+                        });
+                    }
+                    document.getElementById('encoder-display').innerHTML = html;
+                });
         }
 
         function renderMotorControls(espId, motorCount) {

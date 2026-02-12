@@ -22,6 +22,7 @@ calibrations = {}
 xplane_counters = {}
 instrument_mapping = {}
 encoder_events = {}  # New: Store latest encoder events
+dref_data = {}  # Store DREF values and timestamps
 
 # Instrument metadata
 INSTRUMENT_METADATA = {
@@ -196,6 +197,9 @@ def xplane_data():
     field_name = data.get('field_name', '')
     value = data.get('value', 0)
     
+    # Store DREF data with timestamp
+    dref_data[field_name] = {'value': value, 'timestamp': time.time()}
+    
     # esp_id can be provided directly (from rpi_hub) or looked up from DREF
     esp_id = data.get('esp_id')
     motor_id = data.get('motor_id', 0)  # Default to motor 0
@@ -264,6 +268,11 @@ def calibration(esp_id):
 def calibration_json(esp_id):
     cal = calibrations.get(esp_id, {})
     return jsonify(cal)
+
+@app.route('/api/drefs')
+def get_drefs():
+    now = time.time()
+    return jsonify([{'dref': d, 'value': v['value'], 'elapsed': now - v['timestamp']} for d, v in dref_data.items()])
 
 @app.route('/api/calibration/<esp_id>/point', methods=['POST'])
 def add_calibration_point(esp_id):
