@@ -56,8 +56,8 @@
         }
       }
     },
-    "ESP_Attitude": {
-      "esp_id": "ESP_Attidute",
+    "ESP_AttitudeIndicator": {
+      "esp_id": "ESP_AttiduteIndicator",
       "description": "Attitude Indicator",
       "unit": "degrees",
       "motors": {
