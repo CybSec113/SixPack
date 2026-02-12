@@ -117,6 +117,19 @@ Features:
 1. Select the DREFs (write) as mapped in [instrument_mapping.json](./instrument_mapping.json)
 
 
+# Quick Reference - Important Stuff
+## Ports
+|Port|From|To|
+|---|---|---|
+|49000|RPi rpi_hub|x-plane|
+|49001|x-plane|RPi rpi_hub|
+|49002|ESP (Heatbeat)|RPi|
+|49003|RPi|ESP|
+|49004|ESP Encoder|RPi|
+|5000|Any|RPi Webserver|
+|9999|ESP Logger|Any|
+
+
 # Dockerfiles
 I originally thought of using Docker as a testbed, but the relaity is, there's no substitute for testing on the actual RPi and instruments.  The Docker files are there for future use...
 1. **xplane-sim**: this container will transmit a file with pre-recorded x-plane DREF messages

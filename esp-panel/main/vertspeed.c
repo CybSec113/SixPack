@@ -24,7 +24,7 @@ static const char *TAG = "udp_receiver";
 #define HEARTBEAT_PORT 49002
 #define BUFFER_SIZE    1024
 #define HEARTBEAT_INTERVAL 5000
-#define LOG_PORT       9998
+#define LOG_PORT       9999
 #define LOG_BUFFER_SIZE 1024
 
 #define MOTOR_IN1 3
@@ -58,21 +58,25 @@ typedef struct {
     int angle;
 } cal_point_t;
 
-// VSI: -2000 to +2000 fpm, 0 at 270° (9 o'clock), +2000 at 85° (175° CW), -2000 at 95° (175° CCW)
+// VSI: -2000 to +2000 fpm, 0 at 270° (9 o'clock)
 static const cal_point_t calibration[] = {
-    {-2000,  95},
-    {-1000, 182},
+    { 2000,  82}, // +172 CW
+    { 1500,  37}, // +127 CW
+    { 1000, 358}, // +88 CW
+    {  500, 314}, // +44 CW
     {    0, 270},
-    { 1000, 358},
-    { 2000,  85},
+    { -500, 228}, // -42 CCW
+    {-1000, 185}, // -85 CCW
+    {-1500, 143}, // -127 CCW
+    {-2000,  98}, // -172 CCW
 };
 
-static const int calibration_count = 5;
+static const int calibration_count = 9;
 
 static int value_to_angle(int value)
 {
-    if (value <= -2000) return 95;
-    if (value >= 2000) return 85;
+    if (value <= -2000) return 98;
+    if (value >= 2000) return 82;
     
     for (int i = 0; i < calibration_count - 1; i++) {
         if (value >= calibration[i].value && value <= calibration[i + 1].value) {

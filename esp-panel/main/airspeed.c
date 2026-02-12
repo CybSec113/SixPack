@@ -32,7 +32,7 @@ static const char *TAG = "udp_receiver";
 #define HEARTBEAT_PORT 49002
 #define BUFFER_SIZE    1024
 #define HEARTBEAT_INTERVAL 5000
-#define LOG_PORT       9998
+#define LOG_PORT       9999
 #define LOG_BUFFER_SIZE 1024
 
 #define MOTOR_IN1 3
@@ -72,14 +72,16 @@ typedef struct {
 // Airspeed: 0-200 knots
 static const cal_point_t calibration[10] = {
     {40,    32},     // 40 knots at 32° (minimum)
-    {50,    52},
+    //{50,    52},
     {60,    72},
-    {70,    94},
+    //{70,    94},
     {80,    116},
-    {90,    138},
+    //{90,    138},
     {100,   161},
-    {110,   182},
+    //{110,   182},
     {120,   203},
+    {140,   234},
+    {160,   265},
     {200,   315},    // 200 knots at 315° (maximum)
 };
 

@@ -21,7 +21,7 @@
 static const char *TAG = "inputs";
 #define HEARTBEAT_PORT 49002
 #define COMMAND_PORT   49003
-#define LOG_PORT       9997
+#define LOG_PORT       9999
 #define LOG_BUFFER_SIZE 1024
 #define ENCODER_PORT   49004
 
