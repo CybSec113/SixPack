@@ -196,17 +196,13 @@ def xplane_data():
     data = request.json
     field_name = data.get('field_name', '')
     value = data.get('value', 0)
+    esp_id = data.get('esp_id')
+    motor_id = data.get('motor_id', 0)
     
-    # Store DREF data with timestamp
     dref_data[field_name] = {'value': value, 'timestamp': time.time()}
     
-    # esp_id can be provided directly (from rpi_hub) or looked up from DREF
-    esp_id = data.get('esp_id')
-    motor_id = data.get('motor_id', 0)  # Default to motor 0
     if not esp_id:
-        # Find instrument by DREF if esp_id not provided
         for instrument_name, config in instrument_mapping.get('instruments', {}).items():
-            # Check if DREF matches any motor's DREF
             motors = config.get('motors', {})
             for mid, motor_config in motors.items():
                 if motor_config.get('dref') == field_name:
@@ -216,16 +212,11 @@ def xplane_data():
             if esp_id:
                 break
     
-    if not esp_id:
-        return jsonify({'status': 'error', 'message': 'Unknown DREF'}), 400
+    if esp_id:
+        xplane_counters[esp_id] = xplane_counters.get(esp_id, 0) + 1
     
-    xplane_counters[esp_id] = xplane_counters.get(esp_id, 0) + 1
-    
-    # Only send command if esp_id wasn't already provided (avoid double-sending from rpi_hub)
-    if not data.get('esp_id'):
-        if send_command(esp_id, f"VALUE:{motor_id}:{int(value)}"):
-            return jsonify({'status': 'ok'})
-        return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
+    if not data.get('esp_id') and esp_id:
+        send_command(esp_id, f"VALUE:{motor_id}:{int(value)}")
     
     return jsonify({'status': 'ok'})
 
