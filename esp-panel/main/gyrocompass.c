@@ -568,8 +568,8 @@ void app_main(void)
     xTaskCreate(udp_receiver_task, "udp_receiver", 8192, NULL, 3, NULL);
     
     // Don't move the needles on startup - just set internal positions
-    current_position[0] = 0;
-    current_position[1] = 0;
+    current_position_steps[0] = 0;
+    current_position_steps[1] = 0;
     seq_idx[0] = 0;
     seq_idx[1] = 0;
     ESP_LOGI(TAG, "Initialization complete. Ready for commands.");

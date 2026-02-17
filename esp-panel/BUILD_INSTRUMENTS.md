@@ -28,7 +28,7 @@ idf.py -p /dev/tty.usbmodem13301 flash monitor
 |------------|--------|--------|---------------|
 | Airspeed Indicator | ESP_Airspeed | 1 | `CONFIG_INSTRUMENT_AIRSPEED=y` |
 | Attitude Indicator | ESP_AttitudeIndicator | 2 | `CONFIG_INSTRUMENT_ATTITUDE=y` |
-| Altimeter | ESP_Altitude | 1 | `CONFIG_INSTRUMENT_ALTITUDE=y` |
+| Altimeter | ESP_Altimeter | 2 | `CONFIG_INSTRUMENT_ALTIMETER=y` |
 | Turn Coordinator | ESP_TurnIndicator | 1 | `CONFIG_INSTRUMENT_TURN=y` |
 | Gyro Compass | ESP_Gyrocompass | 2 | `CONFIG_INSTRUMENT_GYRO_COMPASS=y` |
 | Vertical Speed | ESP_VertSpeed | 1 | `CONFIG_INSTRUMENT_VERTSPEED=y` |
