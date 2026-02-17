@@ -142,7 +142,7 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     
     // Perform one step
     int seq_len = 4;  // Full step mode only
-    const uint8_t (*sequence)[4] = SEQUENCE_FULL;
+    const uint8_t (*sequence)[4] = SEQUENCE_FULL;  // Try normal sequence for both motors
     
     if (motor_id == 0) {
         gpio_set_level(MOTOR_IN1, sequence[seq_idx[0]][0]);
@@ -159,13 +159,13 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     // Update sequence index
     if (state->direction > 0) {
         if (motor_id == 0) {
-            seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;  // Motor 0 reversed
+            seq_idx[0] = (seq_idx[0] + 1) % seq_len;
         } else {
             seq_idx[1] = (seq_idx[1] + 1) % seq_len;
         }
     } else {
         if (motor_id == 0) {
-            seq_idx[0] = (seq_idx[0] + 1) % seq_len;  // Motor 0 reversed
+            seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;
         } else {
             seq_idx[1] = (seq_idx[1] - 1 + seq_len) % seq_len;
         }
