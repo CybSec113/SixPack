@@ -57,12 +57,12 @@
       }
     },
     "ESP_AttitudeIndicator": {
-      "esp_id": "ESP_AttiduteIndicator",
+      "esp_id": "ESP_AttitudeIndicator",
       "description": "Attitude Indicator",
       "unit": "degrees",
       "motors": {
         "0": {
-          "dref": "csim/cockpit2/gauges/indicators/roll_vacuum_deg_pilot"
+          "dref": "sim/cockpit2/gauges/indicators/roll_vacuum_deg_pilot"
         },
         "1": {
           "dref": "sim/cockpit2/gauges/indicators/pitch_vacuum_deg_pilot"

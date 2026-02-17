@@ -547,12 +547,12 @@ void app_main(void)
     xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 5, NULL);
     xTaskCreate(udp_receiver_task, "udp_receiver", 8192, NULL, 3, NULL);
     
-    // Initialize both needles to 0° at startup
-    vTaskDelay(100 / portTICK_PERIOD_MS);  // Brief delay to let motor timers start
-    motor_move_to(0, 0, 0, 360);  // Motor 0: altitude at 0°
-    motor_move_to(1, 0, 0, 360);  // Motor 1: baro setting at 0°
-    vTaskDelay(2000 / portTICK_PERIOD_MS);  // Wait for movement to complete
-    ESP_LOGI(TAG, "Initialization complete. Altimeter at 0°, ready for commands.");
+    // Don't move the needles on startup - just set internal positions
+    current_position[0] = 0;
+    current_position[1] = 0;
+    seq_idx[0] = 0;
+    seq_idx[1] = 0;
+    ESP_LOGI(TAG, "Initialization complete. Ready for commands.");
     
     // Main task just sleeps, no need to monitor it
     while (1) {

@@ -26,9 +26,9 @@ static const char *TAG = "inputs";
 #define ENCODER_PORT   49004
 
 // EC11 Encoder configurations
-#define EC11_HDG_BUG_CLK   2  // Button input
-#define EC11_HDG_BUG_DT    3
-#define EC11_HDG_BUG_BTN   10
+#define EC11_HDG_BUG_CLK   2  // Pin A
+#define EC11_HDG_BUG_DT    3  // Pin B
+#define EC11_HDG_BUG_BTN   10 // Pin C
 
 typedef struct {
     const char *name;
@@ -60,6 +60,7 @@ static const int encoder_count = sizeof(encoders) / sizeof(encoder_t);
 
 static void encoder_init(void)
 {
+    // Configure CLK and DT pins without pull-up
     gpio_config_t io_conf = {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
@@ -69,14 +70,23 @@ static void encoder_init(void)
     
     for (int i = 0; i < encoder_count; i++) {
         io_conf.pin_bit_mask = (1ULL << encoders[i].pin_clk) | 
-                               (1ULL << encoders[i].pin_dt) | 
-                               (1ULL << encoders[i].pin_btn);
+                               (1ULL << encoders[i].pin_dt);
         gpio_config(&io_conf);
+        
+        // Configure button pin with pull-up
+        gpio_config_t btn_conf = {
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        btn_conf.pin_bit_mask = (1ULL << encoders[i].pin_btn);
+        gpio_config(&btn_conf);
+        
         encoders[i].last_clk_state = gpio_get_level(encoders[i].pin_clk);
         encoders[i].last_btn_state = gpio_get_level(encoders[i].pin_btn);
     }
     
-    // Verify GPIO4 specifically
     int gpio_btn = gpio_get_level(EC11_HDG_BUG_BTN);
     int clk_level = gpio_get_level(EC11_HDG_BUG_CLK);
     int dt_level = gpio_get_level(EC11_HDG_BUG_DT);
@@ -230,13 +240,7 @@ static void heartbeat_task(void *pvParameters)
 static void encoder_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "encoder_task: starting");
-    
-    // Shorter delay in chunks to avoid watchdog
-    for (int i = 0; i < 3; i++) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        ESP_LOGI(TAG, "encoder_task: delay %d/3", i+1);
-    }
-    ESP_LOGI(TAG, "encoder_task: WiFi wait done");
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
     
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (sock < 0) {
@@ -244,7 +248,6 @@ static void encoder_task(void *pvParameters)
         vTaskDelete(NULL);
         return;
     }
-    ESP_LOGI(TAG, "encoder_task: socket created");
     
     int flags = fcntl(sock, F_GETFL, 0);
     fcntl(sock, F_SETFL, flags | O_NONBLOCK);
@@ -253,12 +256,12 @@ static void encoder_task(void *pvParameters)
     rpi_addr.sin_addr.s_addr = inet_addr((const char *)RPI_IP);
     rpi_addr.sin_family = AF_INET;
     rpi_addr.sin_port = htons(ENCODER_PORT);
-    ESP_LOGI(TAG, "encoder_task: address configured");
     
     int last_button_state[encoder_count];
     int last_clk_state[encoder_count];
+    
     for (int i = 0; i < encoder_count; i++) {
-        last_button_state[i] = 1;  // Initialize to released (GPIO HIGH at rest)
+        last_button_state[i] = gpio_get_level(encoders[i].pin_btn);
         last_clk_state[i] = gpio_get_level(encoders[i].pin_clk);
     }
     
@@ -267,15 +270,14 @@ static void encoder_task(void *pvParameters)
     while (1) {
         for (int i = 0; i < encoder_count; i++) {
             int clk_state = gpio_get_level(encoders[i].pin_clk);
-            int dt_state = gpio_get_level(encoders[i].pin_dt);
             int btn_raw = gpio_get_level(encoders[i].pin_btn);
-            bool btn_state = (btn_raw == 0);  // GPIO LOW = pressed, HIGH = released
             
             if (last_clk_state[i] == 1 && clk_state == 0) {
-                // CLK falling edge detected - read DT state immediately
-                dt_state = gpio_get_level(encoders[i].pin_dt);
-                
-                if (dt_state == 1) {
+                vTaskDelay(pdMS_TO_TICKS(2));
+                int dt_confirm = gpio_get_level(encoders[i].pin_dt);
+                // If DT is HIGH: clockwise (increment)
+                // If DT is LOW: counterclockwise (decrement)
+                if (dt_confirm == 1) {
                     encoders[i].value++;
                 } else {
                     encoders[i].value--;
@@ -284,35 +286,30 @@ static void encoder_task(void *pvParameters)
                 char msg[64];
                 snprintf(msg, sizeof(msg), "ENCODER:%s:%d:%s", 
                     encoders[i].name, encoders[i].value, 
-                    btn_state ? "PRESSED" : "released");
+                    btn_raw ? "released" : "PRESSED");
                 sendto(sock, msg, strlen(msg), 0, 
                     (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
             }
             
-            if (btn_state != last_button_state[i]) {
-                // Button state changed - confirm it after minimal debounce
-                btn_raw = gpio_get_level(encoders[i].pin_btn);
-                bool btn_new = (btn_raw == 0);  // LOW = pressed
+            if (btn_raw != last_button_state[i]) {
+                vTaskDelay(pdMS_TO_TICKS(20));
+                int btn_confirm = gpio_get_level(encoders[i].pin_btn);
                 
-                if (btn_new != last_button_state[i]) {
+                if (btn_confirm != last_button_state[i]) {
                     char msg[64];
                     snprintf(msg, sizeof(msg), "ENCODER:%s:%d:%s", 
                         encoders[i].name, encoders[i].value, 
-                        btn_new ? "PRESSED" : "released");
+                        btn_confirm ? "released" : "PRESSED");
                     sendto(sock, msg, strlen(msg), 0, 
                         (struct sockaddr *)&rpi_addr, sizeof(rpi_addr));
-                    last_button_state[i] = btn_new;
-                    encoders[i].last_btn_state = btn_new;
+                    last_button_state[i] = btn_confirm;
                 }
             }
             
             last_clk_state[i] = clk_state;
-            encoders[i].last_clk_state = clk_state;
-            encoders[i].button_pressed = btn_state;
         }
         
-        // Poll every 1ms instead of 10ms for more responsive encoder reading
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     
     close(sock);

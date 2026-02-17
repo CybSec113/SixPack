@@ -437,10 +437,10 @@ void app_main(void)
     xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 5, NULL);
     xTaskCreate(udp_receiver_task, "udp_receiver", 8192, NULL, 3, NULL);
     
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    motor_move_to(270, 0, 360);
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    ESP_LOGI(TAG, "Initialization complete. Needle at 270° (0 fpm), ready for commands.");
+    // Don't move the needle on startup - just set internal position
+    current_position = 270;
+    seq_idx = 0;
+    ESP_LOGI(TAG, "Initialization complete. Ready for commands.");
     
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10000));
