@@ -77,6 +77,44 @@ def send_command(esp_id, message):
         return True
     return False
 
+# VSI calibration: maps FPS values to angles
+VSI_CALIBRATION = [
+    (2000, 82),
+    (1500, 37),
+    (1000, 358),
+    (500, 314),
+    (0, 270),
+    (-500, 228),
+    (-1000, 185),
+    (-1500, 143),
+    (-2000, 98),
+]
+
+def fps_to_angle(fps_value):
+    """Convert vertical speed (FPM - feet per minute) to dial angle using calibration table"""
+    # Clamp to range
+    if fps_value <= -2000:
+        return 98
+    if fps_value >= 2000:
+        return 82
+    
+    # Find surrounding calibration points
+    for i in range(len(VSI_CALIBRATION) - 1):
+        v1, a1 = VSI_CALIBRATION[i]
+        v2, a2 = VSI_CALIBRATION[i + 1]
+        
+        if v1 >= fps_value >= v2:  # Descending order in table
+            # Linear interpolation
+            ratio = (fps_value - v1) / (v2 - v1)
+            angle = int(a1 + ratio * (a2 - a1))
+            return angle
+        elif v2 >= fps_value >= v1:  # Ascending order
+            ratio = (fps_value - v1) / (v2 - v1)
+            angle = int(a1 + ratio * (a2 - a1))
+            return angle
+    
+    return 270
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -189,6 +227,27 @@ def move_motor():
     
     if send_command(esp_id, f"MOVE:{motor_id}:{angle}:{min_angle}:{max_angle}"):
         return jsonify({'status': 'ok'})
+    return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
+
+@app.route('/api/move-vsi', methods=['POST'])
+def move_vsi():
+    """Move VSI (vertical speed indicator) by FPS value"""
+    data = request.json
+    esp_id = data.get('esp_id')
+    motor_id = data.get('motor_id', 0)
+    fps_value = data.get('fps')
+    
+    if esp_id != 'ESP_VertSpeed':
+        return jsonify({'status': 'error', 'message': 'API only supports ESP_VertSpeed'}), 400
+    
+    if fps_value is None:
+        return jsonify({'status': 'error', 'message': 'fps value required'}), 400
+    
+    # Convert FPS to angle and move
+    angle = fps_to_angle(fps_value)
+    
+    if send_command(esp_id, f"MOVE:{motor_id}:{angle}:0:360"):
+        return jsonify({'status': 'ok', 'fps': fps_value, 'angle': angle})
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
 
 @app.route('/api/xplane', methods=['POST'])

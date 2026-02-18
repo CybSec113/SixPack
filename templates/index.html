@@ -413,14 +413,22 @@
             for (let m = 0; m < motorCount; m++) {
                 const motorNum = m + 1;
                 const isAltimeter = espId === 'ESP_Altimeter' && m === 0;
+                const isVSI = espId === 'ESP_VertSpeed';
                 
                 html += `
                     <div class="motor-section">
-                        <h3>Motor ${motorNum}</h3>
+                        <h3>Motor ${motorNum}${isVSI ? ' (Vertical Speed)' : ''}</h3>
                         <div class="gauge-container">
                             <canvas id="gauge-motor-${m}" width="200" height="200"></canvas>
                             <div class="gauge-value" id="gauge-value-motor-${m}">0°</div>
                         </div>
+                        ${isVSI ? `
+                        <div class="slider-group">
+                            <label>FPS:</label>
+                            <input type="number" id="cal-fps-motor-${m}" value="0" min="-2000" max="2000" step="100">
+                            <span style="font-size: 11px; color: #aaa;">(-2000 to +2000)</span>
+                        </div>
+                        ` : ''}
                         <div class="slider-group">
                             <label>Angle:</label>
                             <input type="range" min="0" max="360" value="0" id="cal-slider-motor-${m}">
@@ -440,7 +448,7 @@
                             <input type="number" id="cal-max-motor-${m}" value="360" style="width: 50px;">
                         </div>
                         <div class="motor-buttons">
-                            <button onclick="moveMotor(${m})">Move</button>
+                            ${isVSI ? `<button onclick="moveVSI(${m})">Move to FPS</button>` : `<button onclick="moveMotor(${m})">Move</button>`}
                             <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
                             <button onclick="rotateCCW(${m})" style="background: #aa0000;">CCW 10°</button>
                             <button onclick="zeroMotor(${m})" style="background: #666;">Zero</button>
@@ -456,6 +464,7 @@
                 const slider = document.getElementById(`cal-slider-motor-${m}`);
                 const input = document.getElementById(`cal-angle-motor-${m}`);
                 const valueDisplay = document.getElementById(`gauge-value-motor-${m}`);
+                const fpsInput = document.getElementById(`cal-fps-motor-${m}`);
                 
                 if (slider && input) {
                     slider.oninput = () => {
@@ -470,6 +479,14 @@
                     };
                     
                     drawGauge(`gauge-motor-${m}`, 0);
+                }
+                
+                // FPS input handler for VSI
+                if (fpsInput) {
+                    fpsInput.oninput = () => {
+                        // Show angle preview (would be calculated on server)
+                        valueDisplay.textContent = fpsInput.value + ' FPS';
+                    };
                 }
             }
         }
@@ -512,6 +529,23 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: totalAngle, min_angle: -3600, max_angle: 3600 })
+            });
+        }
+
+        function moveVSI(motorId = 0) {
+            const fps = parseFloat(document.getElementById(`cal-fps-motor-${motorId}`).value);
+            
+            fetch('/api/move-vsi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, fps: fps })
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'ok') {
+                    // Update angle display with converted value
+                    document.getElementById(`cal-angle-motor-${motorId}`).value = data.angle;
+                    document.getElementById(`gauge-value-motor-${motorId}`).textContent = data.angle + '°';
+                    drawGauge(`gauge-motor-${motorId}`, data.angle);
+                }
             });
         }
 
