@@ -29,7 +29,7 @@ INSTRUMENT_METADATA = {
     'ESP_Airspeed': {'motor_count': 1, 'type': 'airspeed'},
     'ESP_AttitudeIndicator': {'motor_count': 2, 'type': 'attitude'},
     'ESP_Altimeter': {'motor_count': 2, 'type': 'altimeter'},
-    'ESP_TurnIndicator': {'motor_count': 1, 'type': 'turn'},
+    'ESP_TurnIndicator': {'motor_count': 2, 'type': 'turn'},
     'ESP_Gyrocompass': {'motor_count': 2, 'type': 'heading'},
     'ESP_VertSpeed': {'motor_count': 1, 'type': 'vsi'},
     'ESP_Inputs': {'motor_count': 0, 'type': 'inputs'},
@@ -249,7 +249,29 @@ def move_vsi():
     if send_command(esp_id, f"MOVE:{motor_id}:{angle}:0:360"):
         return jsonify({'status': 'ok', 'fps': fps_value, 'angle': angle})
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
-
+@app.route('/api/bounds/<esp_id>/<int:motor_id>', methods=['GET', 'POST'])
+def motor_bounds(esp_id, motor_id):
+    """Get/set motor bounds for physically constrained motors (e.g., turn coordinator motor 1)"""
+    if request.method == 'POST':
+        data = request.json
+        min_angle = data.get('min_angle')
+        max_angle = data.get('max_angle')
+        
+        if min_angle is None or max_angle is None:
+            return jsonify({'status': 'error', 'message': 'min_angle and max_angle required'}), 400
+        
+        # Send bounds to ESP
+        if send_command(esp_id, f"BOUNDS:{motor_id}:{min_angle}:{max_angle}"):
+            return jsonify({'status': 'ok', 'esp_id': esp_id, 'motor_id': motor_id, 'min': min_angle, 'max': max_angle})
+        return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
+    else:
+        # GET: return default bounds based on ESP type
+        bounds = {'ESP_TurnIndicator': {'motor_1': {'min': 80, 'max': 280}}}
+        if esp_id in bounds:
+            motor_key = f'motor_{motor_id}'
+            if motor_key in bounds[esp_id]:
+                return jsonify(bounds[esp_id][motor_key])
+        return jsonify({'status': 'error', 'message': 'No bounds info for this motor'}), 404
 @app.route('/api/xplane', methods=['POST'])
 def xplane_data():
     data = request.json
