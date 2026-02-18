@@ -166,6 +166,22 @@ static void motor_init(void)
     ESP_LOGI(TAG, "Motor timer initialized with %d µs step period", MOTOR_STEP_PERIOD_US);
 }
 
+static int get_fpm_sign_from_angle(int angle)
+{
+    // Determine FPM sign from dial angle using calibration layout:
+    // Positive FPM: angles 314°-360° and 0°-82°
+    // Negative FPM: angles 98°-228°
+    angle = ((angle % 360) + 360) % 360;
+    
+    if (angle >= 314 || angle <= 82) {
+        return 1;  // Positive FPM
+    } else if (angle >= 98 && angle <= 228) {
+        return -1;  // Negative FPM
+    } else {
+        return 0;  // Transition/zero region
+    }
+}
+
 static void motor_move_to(int target_angle, int min_angle, int max_angle)
 {
     if (target_angle < min_angle) target_angle = min_angle;
@@ -179,20 +195,27 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
         return;
     }
     
-    // When crossing between positive and negative FPM (positive side > 180°, negative side < 180°),
-    // always pass through 270° (0 FPM marker), not through 82° or 98°
-    if (current > 180 && target_angle < 180 && diff < 0) {
-        // Crossing from positive to negative: go CW through 270°
-        diff = 360 + diff;
-    } else if (current < 180 && target_angle > 180 && diff > 0) {
-        // Crossing from negative to positive: go CW through 270°
-        diff = diff - 360;
-    }
-    // Otherwise, if we need to go > 180°, take the other direction
-    else if (diff > 180) {
-        diff = diff - 360;
-    } else if (diff < -180) {
-        diff = diff + 360;
+    int current_sign = get_fpm_sign_from_angle(current);
+    int target_sign = get_fpm_sign_from_angle(target_angle);
+    
+    // When crossing between positive and negative FPM, always pass through 270° (0 FPM)
+    if (current_sign > 0 && target_sign < 0) {
+        // Positive to negative: force long path through 270°
+        if (diff > 0) {
+            diff = diff - 360;
+        }
+    } else if (current_sign < 0 && target_sign > 0) {
+        // Negative to positive: force long path through 270°
+        if (diff < 0) {
+            diff = diff + 360;
+        }
+    } else if (abs(diff) > 180) {
+        // Same FPM sign or near zero: take shortest path
+        if (diff > 180) {
+            diff = diff - 360;
+        } else if (diff < -180) {
+            diff = diff + 360;
+        }
     }
     
     int steps = (int)(abs(diff) / (360.0 / 2048));
