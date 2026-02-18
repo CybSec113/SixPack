@@ -179,6 +179,22 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
         return;
     }
     
+    // When crossing between positive and negative FPM (positive side > 180°, negative side < 180°),
+    // always pass through 270° (0 FPM marker), not through 82° or 98°
+    if (current > 180 && target_angle < 180 && diff < 0) {
+        // Crossing from positive to negative: go CW through 270°
+        diff = 360 + diff;
+    } else if (current < 180 && target_angle > 180 && diff > 0) {
+        // Crossing from negative to positive: go CW through 270°
+        diff = diff - 360;
+    }
+    // Otherwise, if we need to go > 180°, take the other direction
+    else if (diff > 180) {
+        diff = diff - 360;
+    } else if (diff < -180) {
+        diff = diff + 360;
+    }
+    
     int steps = (int)(abs(diff) / (360.0 / 2048));
     int direction = (diff >= 0) ? 1 : -1;
     

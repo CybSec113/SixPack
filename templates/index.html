@@ -424,7 +424,7 @@
                         </div>
                         ${isVSI ? `
                         <div class="slider-group">
-                            <label>FPS:</label>
+                            <label>FPM:</label>
                             <input type="number" id="cal-fps-motor-${m}" value="0" min="-2000" max="2000" step="100">
                             <span style="font-size: 11px; color: #aaa;">(-2000 to +2000)</span>
                         </div>
@@ -448,7 +448,7 @@
                             <input type="number" id="cal-max-motor-${m}" value="360" style="width: 50px;">
                         </div>
                         <div class="motor-buttons">
-                            ${isVSI ? `<button onclick="moveVSI(${m})">Move to FPS</button>` : `<button onclick="moveMotor(${m})">Move</button>`}
+                            ${isVSI ? `<button onclick="moveMotor(${m})">Move (Angle)</button><button onclick="moveVSI(${m})">Move to FPM</button>` : `<button onclick="moveMotor(${m})">Move</button>`}
                             <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
                             <button onclick="rotateCCW(${m})" style="background: #aa0000;">CCW 10°</button>
                             <button onclick="zeroMotor(${m})" style="background: #666;">Zero</button>
