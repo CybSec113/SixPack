@@ -30,7 +30,7 @@ INSTRUMENT_METADATA = {
     'ESP_AttitudeIndicator': {'motor_count': 2, 'type': 'attitude'},
     'ESP_Altimeter': {'motor_count': 2, 'type': 'altimeter'},
     'ESP_TurnIndicator': {'motor_count': 2, 'type': 'turn'},
-    'ESP_Gyrocompass': {'motor_count': 2, 'type': 'heading'},
+    'ESP_Gyrocompass': {'motor_count': 2, 'type': 'gyrocompass'},
     'ESP_VertSpeed': {'motor_count': 1, 'type': 'vsi'},
     'ESP_Inputs': {'motor_count': 0, 'type': 'inputs'},
 }

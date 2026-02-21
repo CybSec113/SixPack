@@ -99,12 +99,12 @@ static const cal_point_t calibration_motor1[5] = {
 static const int calibration_motor1_count = 5;
 
 // Motor 0 bounds: derived from calibration endpoints
-static const int motor0_min_angle = 340;  // Maps to -20 input
-static const int motor0_max_angle = 20;   // Maps to +20 input
+static int motor0_min_angle = 340;  // Maps to -20 input
+static int motor0_max_angle = 20;   // Maps to +20 input
 
 // Motor 1 bounds: derived from calibration endpoints
-static const int motor1_min_angle = 342;  // Maps to -20 input
-static const int motor1_max_angle = 18;   // Maps to +20 input
+static int motor1_min_angle = 342;  // Maps to -20 input
+static int motor1_max_angle = 18;   // Maps to +20 input
 
 static int value_to_angle(int motor_id, int value)
 {
