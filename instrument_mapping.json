@@ -75,10 +75,10 @@
       "unit": "degrees/sec",
       "motors": {
         "0": {
-          "dref": "sim/cockpit2/gauges/indicators/turn_rate_roll_deg_sec"
+          "dref": "sim/cockpit2/gauges/indicators/turn_rate_roll_deg_pilot"
         },
         "1": {
-          "dref": "sim/cockpit2/gauges/indicators/slip_skid_ball",
+          "dref": "sim/cockpit2/gauges/indicators/sideslip_degrees",
           "bounded": true
         }
       }
