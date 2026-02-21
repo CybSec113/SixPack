@@ -119,6 +119,10 @@ def fps_to_angle(fps_value):
 def index():
     return render_template('index.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204  # 204 No Content - suppresses the 404
+
 @app.route('/api/health')
 def health():
     """Health check - verify rpi_hub connection"""
