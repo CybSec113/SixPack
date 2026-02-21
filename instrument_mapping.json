@@ -2,7 +2,7 @@
   "instruments": {
     "ESP_Airspeed": {
       "esp_id": "ESP_Airspeed",
-      "description": "Airspeed Indicator",
+      "description": "Airspeed Indicator (knots)",
       "unit": "knots",
       "motors": {
         "0": {
@@ -12,7 +12,7 @@
     },
     "ESP_Gyrocompass": {
       "esp_id": "ESP_Gyrocompass",
-      "description": "Gyro Compass",
+      "description": "Gyro Compass (heading)",
       "unit": "degrees",
       "motors": {
         "0": {
@@ -25,7 +25,7 @@
     },
     "ESP_Altimeter": {
       "esp_id": "ESP_Altimeter",
-      "description": "Altimeter",
+      "description": "Altimeter (altitude in feet, barometer setting in inches of mercury)",
       "unit": "feet",
       "motors": {
         "0": {
@@ -48,7 +48,7 @@
     },
     "ESP_VertSpeed": {
       "esp_id": "ESP_VertSpeed",
-      "description": "Vertical Speed Indicator",
+      "description": "Vertical Speed Indicator (feet per minute)",
       "unit": "fpm",
       "motors": {
         "0": {
@@ -58,7 +58,7 @@
     },
     "ESP_AttitudeIndicator": {
       "esp_id": "ESP_AttitudeIndicator",
-      "description": "Attitude Indicator",
+      "description": "Attitude Indicator (roll/pitch degrees)",
       "unit": "degrees",
       "motors": {
         "0": {
@@ -71,7 +71,7 @@
     },
     "ESP_TurnIndicator": {
       "esp_id": "ESP_TurnIndicator",
-      "description": "Turn Coordinator",
+      "description": "Turn Coordinator (degrees/sec)",
       "unit": "degrees/sec",
       "motors": {
         "0": {
