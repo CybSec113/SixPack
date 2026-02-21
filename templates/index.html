@@ -409,7 +409,7 @@
 
         function renderDrefDisplay() {
             // First fetch the instruments mapping
-            fetch('/instrument_mapping.json')
+            fetch('/api/instrument-mapping')
                 .then(r => r.json())
                 .then(instrumentMapping => {
                     fetch('/api/drefs')

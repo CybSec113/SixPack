@@ -346,6 +346,11 @@ def get_drefs():
     now = time.time()
     return jsonify([{'dref': d, 'value': v['value'], 'elapsed': now - v['timestamp']} for d, v in dref_data.items()])
 
+@app.route('/api/instrument-mapping')
+def get_instrument_mapping():
+    """Return the instrument mapping configuration"""
+    return jsonify(instrument_mapping)
+
 @app.route('/api/calibration/<esp_id>/point', methods=['POST'])
 def add_calibration_point(esp_id):
     if esp_id not in calibrations:
