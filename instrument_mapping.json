@@ -71,7 +71,7 @@
     },
     "ESP_TurnIndicator": {
       "esp_id": "ESP_TurnIndicator",
-      "description": "Turn Coordinator (degrees/sec)",
+      "description": "Turn Coordinator (degrees/sec); Slip Indicator (degrees)",
       "unit": "degrees/sec",
       "motors": {
         "0": {

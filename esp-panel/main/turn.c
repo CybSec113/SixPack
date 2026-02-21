@@ -74,19 +74,18 @@ typedef struct {
     int angle;
 } cal_point_t;
 
-// Turn Coordinator: -3 to +3 degrees per second turn rate
-// Motor 0: main needle deflection (0° = -3 deg/sec, 180° = 0 deg/sec, 360° = +3 deg/sec)
-static const cal_point_t calibration[7] = {
-    {-3,     0},
-    {-2,     60},
-    {-1,     120},
-    {0,      180},
-    {1,      240},
-    {2,      300},
-    {3,      360},
+// Turn Coordinator: -20 to +20 degrees per second turn rate
+// Motor 0: main needle deflection starting at 0°
+// 0 deg/sec = 0°, +20 deg/sec = 15°, -20 deg/sec = 345° (-15°)
+static const cal_point_t calibration[5] = {
+    {-20,    345},
+    {-10,    352},
+    {0,      0},
+    {10,     8},
+    {20,     15},
 };
 
-static const int calibration_count = 7;
+static const int calibration_count = 5;
 
 // Motor 1 (slip/skid ball): bounds with sensible defaults
 static int motor1_min_angle = 80;
@@ -457,9 +456,10 @@ static void udp_receiver_task(void *pvParameters)
         } else if (strncmp(rx_buffer, "ZERO:", 5) == 0) {
             int motor_id = 0;
             sscanf(&rx_buffer[5], "%d", &motor_id);
-            current_position[motor_id] = 180;
+            int zero_angle = (motor_id == 0) ? 0 : 180;  // Motor 0 zeros to 0°, motor 1 to 180°
+            current_position[motor_id] = zero_angle;
             seq_idx[motor_id] = 0;
-            ESP_LOGI(TAG, "Motor %d zeroed to 180 degrees", motor_id);
+            ESP_LOGI(TAG, "Motor %d zeroed to %d degrees", motor_id, zero_angle);
         } else if (strncmp(rx_buffer, "BOUNDS:", 7) == 0) {
             // Set motor 1 bounds: BOUNDS:min:max
             int min_angle = 0, max_angle = 360;
@@ -496,9 +496,9 @@ void app_main(void)
     xTaskCreate(heartbeat_task, "heartbeat", 4096, NULL, 5, NULL);
     xTaskCreate(udp_receiver_task, "udp_receiver", 8192, NULL, 3, NULL);
     
-    // CRITICAL: Don't move motors on startup - just set internal positions to center
-    current_position[0] = 180;
-    current_position[1] = 180;
+    // CRITICAL: Don't move motors on startup - just set internal positions to starting points
+    current_position[0] = 0;    // Motor 0: starts at 0 degrees (turn rate needle)
+    current_position[1] = 0;    // Motor 1: starts at 0 degrees (slip/skid ball)
     seq_idx[0] = 0;
     seq_idx[1] = 0;
     ESP_LOGI(TAG, "Initialization complete. Motors NOT moved. Ready for commands.");
