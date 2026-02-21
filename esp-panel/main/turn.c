@@ -74,25 +74,53 @@ typedef struct {
     int angle;
 } cal_point_t;
 
-// Turn Coordinator: -20 to +20 degrees per second turn rate
-// Motor 0: main needle deflection starting at 0°
+// Motor 0 - Turn Coordinator: -20 to +20 degrees per second turn rate
+// Maps turn rate directly to needle angle (wraps at 0/360)
+// 0 deg/sec = 0°, +20 deg/sec = 20°, -20 deg/sec = 340° (-20°)
+static const cal_point_t calibration_motor0[5] = {
+    {-20,    340},
+    {-10,    350},
+    {0,      0},
+    {10,     10},
+    {20,     20},
+};
+static const int calibration_motor0_count = 5;
+
+// Motor 1 - Slip/Skid Ball: -20 to +20 degrees per second turn rate
+// Maps turn rate to ±15 degrees of slip/skid compensation (wraps at 0/360)
 // 0 deg/sec = 0°, +20 deg/sec = 15°, -20 deg/sec = 345° (-15°)
-static const cal_point_t calibration[5] = {
-    {-20,    345},
+static const cal_point_t calibration_motor1[5] = {
+    {-20,    342},
     {-10,    352},
     {0,      0},
     {10,     8},
-    {20,     15},
+    {20,     18},
 };
+static const int calibration_motor1_count = 5;
 
-static const int calibration_count = 5;
+// Motor 0 bounds: derived from calibration endpoints
+static const int motor0_min_angle = 340;  // Maps to -20 input
+static const int motor0_max_angle = 20;   // Maps to +20 input
 
-// Motor 1 (slip/skid ball): bounds with sensible defaults
-static int motor1_min_angle = 80;
-static int motor1_max_angle = 280;
+// Motor 1 bounds: derived from calibration endpoints
+static const int motor1_min_angle = 342;  // Maps to -20 input
+static const int motor1_max_angle = 18;   // Maps to +20 input
 
-static int value_to_angle(int value)
+static int value_to_angle(int motor_id, int value)
 {
+    const cal_point_t *calibration;
+    int calibration_count;
+    
+    if (motor_id == 0) {
+        calibration = calibration_motor0;
+        calibration_count = calibration_motor0_count;
+    } else if (motor_id == 1) {
+        calibration = calibration_motor1;
+        calibration_count = calibration_motor1_count;
+    } else {
+        return 0;
+    }
+    
     if (value <= calibration[0].value) return calibration[0].angle;
     if (value >= calibration[calibration_count - 1].value) return calibration[calibration_count - 1].angle;
     
@@ -208,8 +236,30 @@ static void motor_init(void)
 
 static void motor_move_to(int motor_id, int target_angle, int min_angle, int max_angle)
 {
-    if (target_angle < min_angle) target_angle = min_angle;
-    if (target_angle > max_angle) target_angle = max_angle;
+    // Motor 0 (turn coordinator): must stay within 340-20 degrees (wraps around 0)
+    // Motor 1 (slip/skid ball): must stay within 345-15 degrees (wraps around 0)
+    if (motor_id == 0 || motor_id == 1) {
+        // For wrapped ranges (min > max), reject if angle falls in the gap
+        if (min_angle > max_angle) {
+            if (target_angle > max_angle && target_angle < min_angle) {
+                // Angle is outside valid range - REJECT IT
+                ESP_LOGW(TAG, "Motor %d: Rejecting out-of-bounds angle %d° (valid range: %d°-%d°)", 
+                         motor_id, target_angle, min_angle, max_angle);
+                return;
+            }
+        } else {
+            // Normal range check
+            if (target_angle < min_angle || target_angle > max_angle) {
+                ESP_LOGW(TAG, "Motor %d: Rejecting out-of-bounds angle %d° (valid range: %d°-%d°)", 
+                         motor_id, target_angle, min_angle, max_angle);
+                return;
+            }
+        }
+    } else {
+        if (target_angle < min_angle || target_angle > max_angle) {
+            target_angle = (target_angle < min_angle) ? min_angle : max_angle;
+        }
+    }
     
     int current = (int)current_position[motor_id];
     int diff = target_angle - current;
@@ -422,9 +472,9 @@ static void udp_receiver_task(void *pvParameters)
                 if (sscanf(&rx_buffer[6], "%d:%d", &motor_id, &value) != 2) {
                     motor_id = 0;
                 }
-                int angle = value_to_angle(value);
-                int max_angle = (motor_id == 0) ? 360 : motor1_max_angle;
-                int min_angle = (motor_id == 0) ? 0 : motor1_min_angle;
+                int angle = value_to_angle(motor_id, value);
+                int max_angle = (motor_id == 0) ? motor0_max_angle : motor1_max_angle;
+                int min_angle = (motor_id == 0) ? motor0_min_angle : motor1_min_angle;
                 ESP_LOGI(TAG, "Motor %d: Converted value %d to angle %d degrees", motor_id, value, angle);
                 motor_move_to(motor_id, angle, min_angle, max_angle);
             } else {
@@ -436,8 +486,8 @@ static void udp_receiver_task(void *pvParameters)
                 if (sscanf(&rx_buffer[6], "%d:%d", &motor_id, &angle) != 2) {
                     motor_id = 0;
                 }
-                int max_angle = (motor_id == 0) ? 360 : motor1_max_angle;
-                int min_angle = (motor_id == 0) ? 0 : motor1_min_angle;
+                int max_angle = (motor_id == 0) ? motor0_max_angle : motor1_max_angle;
+                int min_angle = (motor_id == 0) ? motor0_min_angle : motor1_min_angle;
                 ESP_LOGI(TAG, "Motor %d: Parsed angle: %d degrees", motor_id, angle);
                 motor_move_to(motor_id, angle, min_angle, max_angle);
             } else {
@@ -456,7 +506,7 @@ static void udp_receiver_task(void *pvParameters)
         } else if (strncmp(rx_buffer, "ZERO:", 5) == 0) {
             int motor_id = 0;
             sscanf(&rx_buffer[5], "%d", &motor_id);
-            int zero_angle = (motor_id == 0) ? 0 : 180;  // Motor 0 zeros to 0°, motor 1 to 180°
+            int zero_angle = 0;  // All motors zero to 0° (center)
             current_position[motor_id] = zero_angle;
             seq_idx[motor_id] = 0;
             ESP_LOGI(TAG, "Motor %d zeroed to %d degrees", motor_id, zero_angle);

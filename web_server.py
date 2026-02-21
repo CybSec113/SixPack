@@ -255,7 +255,7 @@ def move_vsi():
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
 @app.route('/api/bounds/<esp_id>/<int:motor_id>', methods=['GET', 'POST'])
 def motor_bounds(esp_id, motor_id):
-    """Get/set motor bounds for physically constrained motors (e.g., turn coordinator motor 1)"""
+    """Get/set motor bounds for physically constrained motors"""
     if request.method == 'POST':
         data = request.json
         min_angle = data.get('min_angle')
@@ -270,7 +270,16 @@ def motor_bounds(esp_id, motor_id):
         return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
     else:
         # GET: return default bounds based on ESP type
-        bounds = {'ESP_TurnIndicator': {'motor_1': {'min': 80, 'max': 280}}}
+        bounds = {
+            'ESP_TurnIndicator': {
+                'motor_0': {'min': 340, 'max': 20},      # Turn rate needle
+                'motor_1': {'min': 342, 'max': 18}       # Slip/skid ball (wrapped range)
+            },
+            'ESP_AttitudeIndicator': {
+                'motor_0': {'min': 160, 'max': 200},     # Roll axis (±20°)
+                'motor_1': {'min': 160, 'max': 200}      # Pitch axis (±20°)
+            }
+        }
         if esp_id in bounds:
             motor_key = f'motor_{motor_id}'
             if motor_key in bounds[esp_id]:
