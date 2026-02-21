@@ -41,8 +41,9 @@ def load_devices():
         try:
             with open(DEVICES_FILE, 'r') as f:
                 esp_devices = json.load(f)
-        except:
-            pass
+        except Exception as e:
+            print(f"Error loading devices: {e}")
+            esp_devices = {}
 
 def load_calibrations():
     global calibrations
@@ -126,10 +127,12 @@ def favicon():
 @app.route('/api/health')
 def health():
     """Health check - verify rpi_hub connection"""
+    load_devices()
     return jsonify({
         'status': 'ok',
         'rpi_hub_connected': len(esp_devices) > 0,
-        'connected_devices': list(esp_devices.keys())
+        'connected_devices': list(esp_devices.keys()),
+        'all_configured': list(INSTRUMENT_METADATA.keys())
     })
 
 @app.route('/api/device-info/<esp_id>')

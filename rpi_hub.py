@@ -75,6 +75,7 @@ def heartbeat_listener():
                     esp_id = parts[1]
                     uptime = parts[2] if len(parts) > 2 else "?"
                     esp_devices[esp_id] = {'ip': addr[0], 'last_seen': time.time(), 'uptime': uptime}
+                    print(f"[HEARTBEAT] {esp_id} from {addr[0]} (uptime: {uptime}s)")
                     save_devices()
                 else:
                     print(f"[ERROR] Malformed heartbeat: {msg}")
