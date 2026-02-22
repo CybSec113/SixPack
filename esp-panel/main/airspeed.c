@@ -70,22 +70,17 @@ typedef struct {
 } cal_point_t;
 
 // Airspeed: 0-200 knots
-static const cal_point_t calibration[10] = {
+static const cal_point_t calibration[7] = {
     {40,    32},     // 40 knots at 32° (minimum)
-    //{50,    52},
     {60,    72},
-    //{70,    94},
     {80,    116},
-    //{90,    138},
     {100,   161},
-    //{110,   182},
     {120,   203},
-    {140,   234},
     {160,   265},
     {200,   315},    // 200 knots at 315° (maximum)
 };
 
-static const int calibration_count = 10;
+static const int calibration_count = 7;
 
 // Convert airspeed value to motor angle using calibration points
 static int value_to_angle(int value)
@@ -205,7 +200,14 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     if (target_angle > max_angle) target_angle = max_angle;
     
     int current = (int)current_position;
-    int diff = target_angle - current;
+    int diff = target_angle - (current % 360);  // Only compare within current rotation
+    
+    // Handle wrap-around: if diff > 180, go the short way
+    if (diff > 180) {
+        diff -= 360;
+    } else if (diff < -180) {
+        diff += 360;
+    }
     
     if (diff == 0) {
         ESP_LOGI(TAG, "Motor already at target: %d°", target_angle);
@@ -213,7 +215,7 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     }
     
     // Full step mode: 2048 steps per 360 degrees
-    int steps = (int)(abs(diff) / (360.0 / 2048));
+    int steps = (abs(diff) * 2048 + 180) / 360;  // Round to nearest step
     int direction = (diff >= 0) ? 1 : -1;
     
     ESP_LOGI(TAG, "Motor START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
@@ -225,7 +227,7 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
         motor_state.active = false;
     }
     
-    // Set up new movement
+    // Set up new movement - track cumulative position
     motor_state.target_angle = target_angle;
     motor_state.steps_remaining = steps;
     motor_state.direction = direction;

@@ -98,13 +98,13 @@ static const cal_point_t calibration_motor1[5] = {
 };
 static const int calibration_motor1_count = 5;
 
-// Motor 0 bounds: derived from calibration endpoints
-static int motor0_min_angle = 340;  // Maps to -20 input
-static int motor0_max_angle = 20;   // Maps to +20 input
+// Motor 0 bounds: derived from calibration min/max values
+static int motor0_min_angle = -20;  // calibration_motor0[0].value
+static int motor0_max_angle = 20;   // calibration_motor0[4].value
 
-// Motor 1 bounds: derived from calibration endpoints
-static int motor1_min_angle = 342;  // Maps to -20 input
-static int motor1_max_angle = 18;   // Maps to +20 input
+// Motor 1 bounds: derived from calibration min/max values
+static int motor1_min_angle = -18;  // calibration_motor1[0].value
+static int motor1_max_angle = 18;   // calibration_motor1[4].value
 
 static int value_to_angle(int motor_id, int value)
 {
@@ -132,7 +132,18 @@ static int value_to_angle(int motor_id, int value)
             int a2 = calibration[i + 1].angle;
             
             float ratio = (float)(value - v1) / (v2 - v1);
-            int angle = (int)(a1 + ratio * (a2 - a1));
+            
+            // Handle wrap-around: if angle difference > 180°, interpolate the short way
+            int angle_diff = a2 - a1;
+            if (angle_diff > 180) {
+                angle_diff -= 360;
+            } else if (angle_diff < -180) {
+                angle_diff += 360;
+            }
+            
+            int angle = (int)(a1 + ratio * angle_diff);
+            if (angle < 0) angle += 360;
+            if (angle >= 360) angle -= 360;
             return angle;
         }
     }
@@ -236,30 +247,8 @@ static void motor_init(void)
 
 static void motor_move_to(int motor_id, int target_angle, int min_angle, int max_angle)
 {
-    // Motor 0 (turn coordinator): must stay within 340-20 degrees (wraps around 0)
-    // Motor 1 (slip/skid ball): must stay within 345-15 degrees (wraps around 0)
-    if (motor_id == 0 || motor_id == 1) {
-        // For wrapped ranges (min > max), reject if angle falls in the gap
-        if (min_angle > max_angle) {
-            if (target_angle > max_angle && target_angle < min_angle) {
-                // Angle is outside valid range - REJECT IT
-                ESP_LOGW(TAG, "Motor %d: Rejecting out-of-bounds angle %d° (valid range: %d°-%d°)", 
-                         motor_id, target_angle, min_angle, max_angle);
-                return;
-            }
-        } else {
-            // Normal range check
-            if (target_angle < min_angle || target_angle > max_angle) {
-                ESP_LOGW(TAG, "Motor %d: Rejecting out-of-bounds angle %d° (valid range: %d°-%d°)", 
-                         motor_id, target_angle, min_angle, max_angle);
-                return;
-            }
-        }
-    } else {
-        if (target_angle < min_angle || target_angle > max_angle) {
-            target_angle = (target_angle < min_angle) ? min_angle : max_angle;
-        }
-    }
+    if (target_angle < min_angle) target_angle = min_angle;
+    if (target_angle > max_angle) target_angle = max_angle;
     
     int current = (int)current_position[motor_id];
     int diff = target_angle - current;
@@ -269,7 +258,7 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
         return;
     }
     
-    int steps = (int)(abs(diff) / (360.0 / 2048));
+    int steps = (abs(diff) * 2048 + 180) / 360;  // Round to nearest step
     int direction = (diff >= 0) ? 1 : -1;
     
     ESP_LOGI(TAG, "Motor %d START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 

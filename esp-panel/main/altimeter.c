@@ -50,6 +50,7 @@ static const char *TAG = "udp_receiver";
 
 static float current_position[2] = {0, 0};  // Track position for motor 0 and 1
 static int seq_idx[2] = {0, 0};
+static int rotations[2] = {0, 0};  // Track full rotations for motor 0 (altitude)
 
 // Motor state for hardware timer control
 typedef struct {
@@ -78,8 +79,8 @@ typedef struct {
 
 // Altimeter Motor 0: 100 feet hand (0-1000 feet per rotation, keeps circling)
 // The 1000 and 10000 feet hands are mechanically linked to this motor
-// 10 calibration points for 0-1000 feet across 360° (wraps for multi-rotation altitudes)
-static const cal_point_t calibration_motor0[10] = {
+// 11 calibration points for 0-999 feet across 360° (wraps for multi-rotation altitudes)
+static const cal_point_t calibration_motor0[11] = {
     {0,      0},       // 0 ft at 0°
     {100,    36},      // 100 ft at 36°
     {200,    72},      // 200 ft at 72°
@@ -89,10 +90,11 @@ static const cal_point_t calibration_motor0[10] = {
     {600,    216},     // 600 ft at 216°
     {700,    252},     // 700 ft at 252°
     {800,    288},     // 800 ft at 288°
-    {1000,   360},     // 1000 ft at 360° (wraps for altitudes > 1000 ft)
+    {900,    324},     // 900 ft at 324°
+    {999,    359},     // 999 ft at 359° (just before wrap)
 };
 
-static const int calibration_count_motor0 = 10;
+static const int calibration_count_motor0 = 11;
 // Storing as integers: 286-311 representing 28.6-31.1 inHg (in 0.1 inHg units)
 // 7 points evenly spaced across 216° (does not wrap)
 static const cal_point_t calibration_motor1[7] = {
@@ -194,8 +196,26 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     
     if (state->steps_remaining <= 0) {
         state->active = false;
-        current_position[motor_id] = state->target_angle;
-        ESP_LOGI(TAG, "Motor %d reached target: %d°", motor_id, state->target_angle);
+        // Accumulate position: add the delta we moved
+        int current_mod = (int)current_position[motor_id] % 360;
+        int delta = state->target_angle - current_mod;
+        if (delta > 180) delta -= 360;
+        else if (delta < -180) delta += 360;
+        
+        // Track rotation crossings for motor 0 (altitude)
+        if (motor_id == 0) {
+            int old_mod = (int)current_position[motor_id] % 360;
+            int new_pos = (int)current_position[motor_id] + delta;
+            int new_mod = new_pos % 360;
+            if (new_mod < 0) new_mod += 360;
+            
+            // Detect crossing 0/360
+            if (delta > 0 && new_mod < old_mod) rotations[0]++;  // Crossed forward
+            else if (delta < 0 && new_mod > old_mod) rotations[0]--;  // Crossed backward
+        }
+        
+        current_position[motor_id] += delta;
+        ESP_LOGI(TAG, "Motor %d reached target: %d° (cumulative: %d°, rotations: %d)", motor_id, state->target_angle, (int)current_position[motor_id], rotations[motor_id]);
         return false;  // Stop timer
     }
     
@@ -273,7 +293,27 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     if (target_angle > max_angle) target_angle = max_angle;
     
     int current = (int)current_position[motor_id];
-    int diff = target_angle - current;
+    int current_mod = current % 360;
+    if (current_mod < 0) current_mod += 360;
+    
+    int diff = target_angle - current_mod;
+    
+    // For motor 0 (altitude), check if we should cross 0/360
+    if (motor_id == 0) {
+        // If diff suggests going backward > 180°, we should go forward with a rotation
+        if (diff < -180) {
+            diff += 360;
+        } else if (diff > 180) {
+            diff -= 360;
+        }
+    } else {
+        // Motor 1: normal wrap-around
+        if (diff > 180) {
+            diff -= 360;
+        } else if (diff < -180) {
+            diff += 360;
+        }
+    }
     
     if (diff == 0) {
         ESP_LOGI(TAG, "Motor %d already at target: %d°", motor_id, target_angle);
@@ -281,7 +321,7 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     }
     
     // Full step mode: 2048 steps per 360 degrees
-    int steps = (int)(abs(diff) / (360.0 / 2048));
+    int steps = (abs(diff) * 2048 + 180) / 360;  // Round to nearest step
     int direction = (diff >= 0) ? 1 : -1;
     
     ESP_LOGI(TAG, "Motor %d START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
@@ -293,7 +333,7 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
         motor_state[motor_id].active = false;
     }
     
-    // Set up new movement
+    // Set up new movement - track cumulative position
     motor_state[motor_id].motor_id = motor_id;
     motor_state[motor_id].target_angle = target_angle;
     motor_state[motor_id].steps_remaining = steps;
