@@ -13,6 +13,7 @@ DEBUG = True
 HEARTBEAT_PORT = 49002
 COMMAND_PORT = 49003
 TIMEOUT = 15
+XPLANE_TIMEOUT = 5
 CAL_FILE = 'calibrations.json'
 DEVICES_FILE = 'esp_devices.json'
 MAPPING_FILE = 'instrument_mapping.json'
@@ -21,8 +22,8 @@ esp_devices = {}
 calibrations = {}
 xplane_counters = {}
 instrument_mapping = {}
-encoder_events = {}  # New: Store latest encoder events
-dref_data = {}  # Store DREF values and timestamps
+encoder_events = {}
+dref_data = {}
 
 # Instrument metadata
 INSTRUMENT_METADATA = {
@@ -143,22 +144,35 @@ def get_device_info(esp_id):
 
 @app.route('/api/devices')
 def get_devices():
-    load_devices()  # Reload from file each time
+    load_devices()
     devices = []
     now = time.time()
     
-    # Add X-Plane as special entry at top
+    # Check X-Plane status: offline if no messages in last XPLANE_TIMEOUT seconds
     xplane_total_messages = sum(xplane_counters.values())
+    xplane_online = False
+    xplane_last_seen = '-'
+    if dref_data:
+        latest_dref_time = max(v['timestamp'] for v in dref_data.values())
+        elapsed = now - latest_dref_time
+        if elapsed < XPLANE_TIMEOUT:
+            xplane_online = True
+        hours = int(elapsed // 3600)
+        minutes = int((elapsed % 3600) // 60)
+        seconds = int(elapsed % 60)
+        xplane_last_seen = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    
     devices.append({
         'id': 'X-Plane',
         'ip': 'localhost',
         'uptime': '-',
-        'last_seen': '-',
+        'last_seen': xplane_last_seen,
         'is_xplane': True,
-        'xplane_messages': xplane_total_messages
+        'xplane_messages': xplane_total_messages,
+        'online': xplane_online
     })
     
-    # Define instrument order: top row, then bottom row, then inputs
+    # Define instrument order
     instrument_order = [
         'ESP_Airspeed',
         'ESP_AttitudeIndicator',
@@ -180,8 +194,11 @@ def get_devices():
             if isinstance(uptime_str, (int, float)):
                 uptime_str = str(int(uptime_str))
             
-            # Calculate time elapsed since last seen
+            # Check if device is still online (within TIMEOUT)
             elapsed = now - last_seen_ts
+            is_online = elapsed < TIMEOUT
+            
+            # Calculate time elapsed since last seen
             hours = int(elapsed // 3600)
             minutes = int((elapsed % 3600) // 60)
             seconds = int(elapsed % 60)
@@ -195,7 +212,7 @@ def get_devices():
                 'calibration': calibrations.get(esp_id, {}),
                 'xplane_messages': xplane_counters.get(esp_id, 0),
                 'is_xplane': False,
-                'online': True,
+                'online': is_online,
                 'encoders': encoder_events.copy() if esp_id == 'ESP_Inputs' else {}
             }
             
@@ -256,6 +273,7 @@ def move_vsi():
     if send_command(esp_id, f"MOVE:{motor_id}:{angle}:0:360"):
         return jsonify({'status': 'ok', 'fps': fps_value, 'angle': angle})
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
+
 @app.route('/api/bounds/<esp_id>/<int:motor_id>', methods=['GET', 'POST'])
 def motor_bounds(esp_id, motor_id):
     """Get/set motor bounds for physically constrained motors"""
@@ -275,12 +293,12 @@ def motor_bounds(esp_id, motor_id):
         # GET: return default bounds based on ESP type
         bounds = {
             'ESP_TurnIndicator': {
-                'motor_0': {'min': 340, 'max': 20},      # Turn rate needle
-                'motor_1': {'min': 342, 'max': 18}       # Slip/skid ball (wrapped range)
+                'motor_0': {'min': 340, 'max': 20},
+                'motor_1': {'min': 342, 'max': 18}
             },
             'ESP_AttitudeIndicator': {
-                'motor_0': {'min': 160, 'max': 200},     # Roll axis (±20°)
-                'motor_1': {'min': 160, 'max': 200}      # Pitch axis (±20°)
+                'motor_0': {'min': 160, 'max': 200},
+                'motor_1': {'min': 160, 'max': 200}
             }
         }
         if esp_id in bounds:
@@ -288,6 +306,7 @@ def motor_bounds(esp_id, motor_id):
             if motor_key in bounds[esp_id]:
                 return jsonify(bounds[esp_id][motor_key])
         return jsonify({'status': 'error', 'message': 'No bounds info for this motor'}), 404
+
 @app.route('/api/xplane', methods=['POST'])
 def xplane_data():
     data = request.json
@@ -405,7 +424,6 @@ def encoder_event():
             'timestamp': time.time()
         }
         print(f"[ENCODER] {encoder_name}: value={value}, button={button}")
-        print(f"[DEBUG] encoder_events now: {encoder_events}")  # Debug
     
     return jsonify({'status': 'ok'})
 
