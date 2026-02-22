@@ -18,8 +18,8 @@ All instruments use the same CMakeLists.txt with environment-based configuration
 idf.py fullclean
 idf.py menuconfig
 # Set: Network → WiFi SSID, Password, RPI_IP, ESP_DEVICE_ID
-idf.py -D INSTRUMENT=altimeter build
-idf.py -p /dev/tty.usbmodem13301 flash monitor
+idf.py -D INSTRUMENT=<altimeter> build
+idf.py flash monitor
 ```
 
 ### Supported Instruments
@@ -32,6 +32,7 @@ idf.py -p /dev/tty.usbmodem13301 flash monitor
 | Turn Coordinator | ESP_TurnIndicator | 1 | `CONFIG_INSTRUMENT_TURN=y` |
 | Gyro Compass | ESP_Gyrocompass | 2 | `CONFIG_INSTRUMENT_GYRO_COMPASS=y` |
 | Vertical Speed | ESP_VertSpeed | 1 | `CONFIG_INSTRUMENT_VERTSPEED=y` |
+| Inputs (e.g., baro) | ESP_Inputs | n/a | `CONFIG_INSTRUMENT_INPUTS=y`
 
 ## Example: Building Gyrocompass (Dual Motor)
 
@@ -49,7 +50,7 @@ idf.py menuconfig
 
 # Build and flash
 idf.py build
-idf.py -p /dev/tty.usbmodem13301 flash monitor
+idf.py flash monitor
 
 # In another terminal, monitor WiFi logs:
 python3 receive_logs.py 192.168.x.x 9999

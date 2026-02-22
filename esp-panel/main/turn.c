@@ -131,15 +131,12 @@ static int value_to_angle(int motor_id, int value)
             int a1 = calibration[i].angle;
             int a2 = calibration[i + 1].angle;
             
-            float ratio = (float)(value - v1) / (v2 - v1);
+            if (v1 == v2) return a1;
             
-            // Handle wrap-around: if angle difference > 180°, interpolate the short way
+            float ratio = (float)(value - v1) / (v2 - v1);
             int angle_diff = a2 - a1;
-            if (angle_diff > 180) {
-                angle_diff -= 360;
-            } else if (angle_diff < -180) {
-                angle_diff += 360;
-            }
+            if (angle_diff > 180) angle_diff -= 360;
+            else if (angle_diff < -180) angle_diff += 360;
             
             int angle = (int)(a1 + ratio * angle_diff);
             if (angle < 0) angle += 360;
@@ -148,7 +145,7 @@ static int value_to_angle(int motor_id, int value)
         }
     }
     
-    return 180;
+    return calibration[calibration_count - 1].angle;
 }
 
 static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)

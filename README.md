@@ -4,13 +4,14 @@ This is a work in progress with continuous improvements.
 
 # Requirements
 1. X-Plane 11+ (may work on earlier versions)
-2. Raspberry Pi running headless OS (any variant with standard GPIO and networking)
-3. ESP32-C3 - one for each instrument (6 total for full panel)
-4. 28BYJ-48 stepper motor + ULN2003 controller (per motor)
-5. Breadboard and jumper wires
-6. DC power supply (5V for steppers, USB for ESPs)
-7. 3D printer for instrument housings and frame (optional)
-8. Miscellaneous hardware (M3/M4 screws, etc.)
+1. Raspberry Pi running headless OS (any variant with standard GPIO and networking)
+1. ESP32-C3 - one for each instrument (7 total for full panel; 1 dedicated to input data (e.g., heading bug, baro, etc.))
+1. 28BYJ-48 stepper motor + ULN2003 controller (per motor: 10 total)
+1. Variety of 20-22 gauge wires and male/female connectors
+1. Miscellaneous electronics components: capacitors, resistors, soldering iron, etc.
+1. DC power supply (5V, up to 4 amps, common ground, for ESCs and steppers)
+1. 3D printer for instrument housings and frame (optional)
+1. Miscellaneous hardware (M3/M4 screws, etc.)
 
 # Software Architecture
 
@@ -42,33 +43,9 @@ X-Plane → RPi Hub → ESPs
 1. Install ESP-IDF: https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/get-started/
 2. Clone this repo and navigate to `esp-panel/`
 
-### Configuration
-1. Copy `.env.example` to `.env` and update with your WiFi credentials:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your WiFi SSID, password, and RPi IP
-   ```
+### Configuraion
+See [BUILD_INSTRUMENTS](./esp-panel/BUILD_INSTRUMENTS.md) for details on building ESPs.
 
-2. Run menuconfig to set WiFi and network settings:
-   ```bash
-   source <ESP-IDF-PATH>/export.sh
-   idf.py menuconfig
-   ```
-   Navigate to "WiFi Configuration" and "Network Configuration" to set values
-
-### Build and Flash
-There are diffent types of ESPs that can be built (e.g., Airspeed, Gyro, etc.), so we have to update the setup before each build (improve this process?):  
-* udpdate the .env file to reflect the which ESP is being built
-   
-```bash
-idf.py --list-targets
-iff.py set-target esp32c3           # or whatever variant you're using
-idf.py menuconfig                   # update Instrument Config and Network seetings to match ESP build
-idf.py -D INSTRUMENT=airspeed build # use actual instrument being built
-idf.py flash monitor
-```
-
-Watch the logs for WiFi connection and heartbeat messages.
 
 ## Raspberry Pi Setup
 
@@ -148,9 +125,3 @@ This creates three containers:
 - **xplane-sim**: Transmits pre-recorded X-Plane DREF messages
 - **pi-dispatcher**: Receives X-Plane data and relays to ESP simulators
 - **esp-sim**: Simulates ESP32 receiving motor commands
-
-## Docker Mode
-
-When running in Docker containers, GPIO output is disabled and motor movements are logged to stdout instead.
-
-Detection is automatic via `/.dockerenv` file presence.

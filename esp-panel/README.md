@@ -151,9 +151,9 @@ idf.py monitor
 ```
 
 ### WiFi Logging
-Logs stream to TCP port 9998 after WiFi connects:
+Logs stream to TCP port 9999 after WiFi connects:
 ```bash
-nc <ESP_IP> 9998
+nc <ESP_IP> 9999
 ```
 
 Watch for:
