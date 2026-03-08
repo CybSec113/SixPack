@@ -379,22 +379,15 @@
                 if (xplaneInput) {
                     xplaneInput.oninput = () => {
                         const value = parseInt(xplaneInput.value);
-                        if (fpsInput) {
-                            const vsiCal = [[2000, 82], [1500, 37], [1000, 358], [500, 314], [0, 270], [-500, 228], [-1000, 185], [-1500, 143], [-2000, 98]];
-                            let angle = 270;
-                            for (let i = 0; i < vsiCal.length - 1; i++) {
-                                const [v1, a1] = vsiCal[i];
-                                const [v2, a2] = vsiCal[i + 1];
-                                if ((v1 >= value && value >= v2) || (v2 >= value && value >= v1)) {
-                                    const ratio = (value - v1) / (v2 - v1);
-                                    angle = a1 + ratio * (a2 - a1);
-                                    break;
-                                }
+                        fetch('/api/xplane-convert', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ esp_id: currentDevice, motor_id: m, value: value })
+                        }).then(r => r.json()).then(data => {
+                            if (data.status === 'ok') {
+                                moveMotor(m);
                             }
-                            input.value = angle.toFixed(1);
-                            valueDisplay.textContent = angle.toFixed(1) + '°';
-                            drawGauge(`gauge-motor-${m}`, angle);
-                        }
+                        });
                     };
                 }
                 

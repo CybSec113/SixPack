@@ -66,10 +66,6 @@ def save_calibrations():
     with open(CAL_FILE, 'w') as f:
         json.dump(calibrations, f, indent=2)
 
-def heartbeat_listener():
-    """Deprecated - heartbeats handled by rpi_hub.py"""
-    pass
-
 def send_command(esp_id, message):
     load_devices()
     if esp_id in esp_devices:
@@ -94,23 +90,20 @@ VSI_CALIBRATION = [
 
 def fps_to_angle(fps_value):
     """Convert vertical speed (FPM - feet per minute) to dial angle using calibration table"""
-    # Clamp to range
     if fps_value <= -2000:
         return 98
     if fps_value >= 2000:
         return 82
     
-    # Find surrounding calibration points
     for i in range(len(VSI_CALIBRATION) - 1):
         v1, a1 = VSI_CALIBRATION[i]
         v2, a2 = VSI_CALIBRATION[i + 1]
         
-        if v1 >= fps_value >= v2:  # Descending order in table
-            # Linear interpolation
+        if v1 >= fps_value >= v2:
             ratio = (fps_value - v1) / (v2 - v1)
             angle = int(a1 + ratio * (a2 - a1))
             return angle
-        elif v2 >= fps_value >= v1:  # Ascending order
+        elif v2 >= fps_value >= v1:
             ratio = (fps_value - v1) / (v2 - v1)
             angle = int(a1 + ratio * (a2 - a1))
             return angle
@@ -123,11 +116,10 @@ def index():
 
 @app.route('/favicon.ico')
 def favicon():
-    return '', 204  # 204 No Content - suppresses the 404
+    return '', 204
 
 @app.route('/api/health')
 def health():
-    """Health check - verify rpi_hub connection"""
     load_devices()
     return jsonify({
         'status': 'ok',
@@ -138,7 +130,6 @@ def health():
 
 @app.route('/api/device-info/<esp_id>')
 def get_device_info(esp_id):
-    """Return instrument metadata including motor count"""
     info = INSTRUMENT_METADATA.get(esp_id, {'motor_count': 1, 'type': 'unknown'})
     return jsonify(info)
 
@@ -148,7 +139,6 @@ def get_devices():
     devices = []
     now = time.time()
     
-    # Check X-Plane status: offline if no messages in last XPLANE_TIMEOUT seconds
     xplane_total_messages = sum(xplane_counters.values())
     xplane_online = False
     xplane_last_seen = '-'
@@ -172,7 +162,6 @@ def get_devices():
         'online': xplane_online
     })
     
-    # Define instrument order
     instrument_order = [
         'ESP_Airspeed',
         'ESP_AttitudeIndicator',
@@ -183,22 +172,18 @@ def get_devices():
         'ESP_Inputs',
     ]
     
-    # Add all instruments in order (online or offline)
     for esp_id in instrument_order:
         if esp_id in esp_devices:
             info = esp_devices[esp_id]
             last_seen_ts = info.get('last_seen', time.time())
             uptime_str = info.get('uptime', '?')
             
-            # Handle uptime: if it's a string, use it; if it's a number, convert
             if isinstance(uptime_str, (int, float)):
                 uptime_str = str(int(uptime_str))
             
-            # Check if device is still online (within TIMEOUT)
             elapsed = now - last_seen_ts
             is_online = elapsed < TIMEOUT
             
-            # Calculate time elapsed since last seen
             hours = int(elapsed // 3600)
             minutes = int((elapsed % 3600) // 60)
             seconds = int(elapsed % 60)
@@ -218,7 +203,6 @@ def get_devices():
             
             devices.append(device_data)
         else:
-            # Instrument is offline
             device_data = {
                 'id': esp_id,
                 'ip': '?',
@@ -240,11 +224,10 @@ def move_motor():
     data = request.json
     esp_id = data.get('esp_id')
     
-    # Reject motor commands for Inputs ESP (has no motors)
     if esp_id == 'ESP_Inputs':
         return jsonify({'status': 'error', 'message': 'ESP_Inputs has no motors'}), 400
     
-    motor_id = data.get('motor_id', 0)  # Default to motor 0
+    motor_id = data.get('motor_id', 0)
     angle = data.get('angle')
     min_angle = data.get('min_angle', 0)
     max_angle = data.get('max_angle', 360)
@@ -255,7 +238,6 @@ def move_motor():
 
 @app.route('/api/move-vsi', methods=['POST'])
 def move_vsi():
-    """Move VSI (vertical speed indicator) by FPS value"""
     data = request.json
     esp_id = data.get('esp_id')
     motor_id = data.get('motor_id', 0)
@@ -267,16 +249,28 @@ def move_vsi():
     if fps_value is None:
         return jsonify({'status': 'error', 'message': 'fps value required'}), 400
     
-    # Convert FPS to angle and move
     angle = fps_to_angle(fps_value)
     
     if send_command(esp_id, f"MOVE:{motor_id}:{angle}:0:360"):
         return jsonify({'status': 'ok', 'fps': fps_value, 'angle': angle})
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
 
+@app.route('/api/xplane-convert', methods=['POST'])
+def xplane_convert():
+    data = request.json
+    esp_id = data.get('esp_id')
+    motor_id = data.get('motor_id', 0)
+    value = data.get('value')
+    
+    if value is None:
+        return jsonify({'status': 'error', 'message': 'value required'}), 400
+    
+    if send_command(esp_id, f"VALUE:{motor_id}:{int(value)}"):
+        return jsonify({'status': 'ok', 'value': value})
+    return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
+
 @app.route('/api/bounds/<esp_id>/<int:motor_id>', methods=['GET', 'POST'])
 def motor_bounds(esp_id, motor_id):
-    """Get/set motor bounds for physically constrained motors"""
     if request.method == 'POST':
         data = request.json
         min_angle = data.get('min_angle')
@@ -285,12 +279,10 @@ def motor_bounds(esp_id, motor_id):
         if min_angle is None or max_angle is None:
             return jsonify({'status': 'error', 'message': 'min_angle and max_angle required'}), 400
         
-        # Send bounds to ESP
         if send_command(esp_id, f"BOUNDS:{motor_id}:{min_angle}:{max_angle}"):
             return jsonify({'status': 'ok', 'esp_id': esp_id, 'motor_id': motor_id, 'min': min_angle, 'max': max_angle})
         return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
     else:
-        # GET: return default bounds based on ESP type
         bounds = {
             'ESP_TurnIndicator': {
                 'motor_0': {'min': 340, 'max': 20},
@@ -341,11 +333,10 @@ def zero_motor():
     data = request.json
     esp_id = data.get('esp_id')
     
-    # Reject zero commands for Inputs ESP (has no motors)
     if esp_id == 'ESP_Inputs':
         return jsonify({'status': 'error', 'message': 'ESP_Inputs has no motors'}), 400
     
-    motor_id = data.get('motor_id', 0)  # Default to motor 0
+    motor_id = data.get('motor_id', 0)
     
     if send_command(esp_id, f"ZERO:{motor_id}"):
         return jsonify({'status': 'ok'})
@@ -362,7 +353,6 @@ def calibration(esp_id):
         calibrations[esp_id]['max_angle'] = data.get('max_angle', 360)
         save_calibrations()
         
-        # Send calibration to ESP32 via UDP
         cal_json = json.dumps(calibrations[esp_id])
         send_command(esp_id, f"CAL:{cal_json}")
         
@@ -383,7 +373,6 @@ def get_drefs():
 
 @app.route('/api/instrument-mapping')
 def get_instrument_mapping():
-    """Return the instrument mapping configuration"""
     return jsonify(instrument_mapping)
 
 @app.route('/api/calibration/<esp_id>/point', methods=['POST'])
@@ -410,7 +399,6 @@ def delete_calibration_point(esp_id, idx):
 
 @app.route('/api/encoder_event', methods=['POST'])
 def encoder_event():
-    """Receive encoder events from Inputs ESP via rpi_hub"""
     global encoder_events
     data = request.json
     encoder_name = data.get('encoder')
