@@ -482,23 +482,21 @@
                         </div>
                         ` : ''}
                         <div class="slider-group">
-                            <label>Angle:</label>
-                            <input type="range" min="0" max="360" value="0" id="cal-slider-motor-${m}">
-                            <input type="number" id="cal-angle-motor-${m}" value="0" min="0" max="360">
+                            <label>Angle (deg):</label>
+                            <input type="number" id="cal-angle-motor-${m}" value="0" min="-3600" max="3600">
                         </div>
                         ${isAltimeter ? `
                         <div class="slider-group">
-                            <label>Rotations:</label>
-                            <input type="number" id="cal-rotations-motor-${m}" value="0" min="-10" max="10" style="width: 80px;">
-                            <span style="font-size: 11px; color: #aaa;">(for zeroing)</span>
+                            <label>Altitude (ft):</label>
+                            <input type="number" id="cal-altitude-motor-${m}" value="0" min="0" max="50000" step="100">
                         </div>
                         ` : ''}
-                        <div class="slider-group" style="font-size: 11px;">
-                            <label>Min:</label>
-                            <input type="number" id="cal-min-motor-${m}" value="0" style="width: 50px;">
-                            <label>Max:</label>
-                            <input type="number" id="cal-max-motor-${m}" value="360" style="width: 50px;">
+                        ${isVSI ? `
+                        <div class="slider-group">
+                            <label>X-Plane Value:</label>
+                            <input type="number" id="cal-xplane-motor-${m}" value="0" min="-2000" max="2000" step="100">
                         </div>
+                        ` : ''}
                         <div class="motor-buttons">
                             ${isVSI ? `<button onclick="moveMotor(${m})">Move (Angle)</button><button onclick="moveVSI(${m})">Move to FPM</button>` : `<button onclick="moveMotor(${m})">Move</button>`}
                             <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
@@ -511,33 +509,47 @@
             
             controlsDiv.innerHTML = html;
             
-            // Re-attach event listeners for all motors
             for (let m = 0; m < motorCount; m++) {
-                const slider = document.getElementById(`cal-slider-motor-${m}`);
                 const input = document.getElementById(`cal-angle-motor-${m}`);
                 const valueDisplay = document.getElementById(`gauge-value-motor-${m}`);
-                const fpsInput = document.getElementById(`cal-fps-motor-${m}`);
+                const altitudeInput = document.getElementById(`cal-altitude-motor-${m}`);
+                const xplaneInput = document.getElementById(`cal-xplane-motor-${m}`);
                 
-                if (slider && input) {
-                    slider.oninput = () => {
-                        input.value = slider.value;
-                        valueDisplay.textContent = slider.value + '°';
-                        drawGauge(`gauge-motor-${m}`, parseFloat(slider.value));
-                    };
+                if (input) {
                     input.oninput = () => {
-                        slider.value = input.value;
                         valueDisplay.textContent = input.value + '°';
                         drawGauge(`gauge-motor-${m}`, parseFloat(input.value));
                     };
-                    
                     drawGauge(`gauge-motor-${m}`, 0);
                 }
                 
-                // FPS input handler for VSI
-                if (fpsInput) {
-                    fpsInput.oninput = () => {
-                        // Show angle preview (would be calculated on server)
-                        valueDisplay.textContent = fpsInput.value + ' FPS';
+                if (altitudeInput) {
+                    altitudeInput.oninput = () => {
+                        const altitude = parseInt(altitudeInput.value);
+                        const angle = (altitude % 1000) * 0.36;
+                        input.value = angle;
+                        valueDisplay.textContent = angle.toFixed(1) + '°';
+                        drawGauge(`gauge-motor-${m}`, angle);
+                    };
+                }
+                
+                if (xplaneInput) {
+                    xplaneInput.oninput = () => {
+                        const fps = parseInt(xplaneInput.value);
+                        const vsiCal = [[2000, 82], [1500, 37], [1000, 358], [500, 314], [0, 270], [-500, 228], [-1000, 185], [-1500, 143], [-2000, 98]];
+                        let angle = 270;
+                        for (let i = 0; i < vsiCal.length - 1; i++) {
+                            const [v1, a1] = vsiCal[i];
+                            const [v2, a2] = vsiCal[i + 1];
+                            if ((v1 >= fps && fps >= v2) || (v2 >= fps && fps >= v1)) {
+                                const ratio = (fps - v1) / (v2 - v1);
+                                angle = a1 + ratio * (a2 - a1);
+                                break;
+                            }
+                        }
+                        input.value = angle.toFixed(1);
+                        valueDisplay.textContent = angle.toFixed(1) + '°';
+                        drawGauge(`gauge-motor-${m}`, angle);
                     };
                 }
             }
@@ -573,14 +585,11 @@
 
         function moveMotor(motorId = 0) {
             const angle = parseFloat(document.getElementById(`cal-angle-motor-${motorId}`).value);
-            const rotationsInput = document.getElementById(`cal-rotations-motor-${motorId}`);
-            const rotations = rotationsInput ? parseInt(rotationsInput.value) : 0;
-            const totalAngle = angle + (rotations * 360);
             
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: totalAngle, min_angle: -3600, max_angle: 3600 })
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: angle, min_angle: -3600, max_angle: 3600 })
             });
         }
 
@@ -604,7 +613,6 @@
         function rotateCW(motorId) {
             const input = document.getElementById(`cal-angle-motor-${motorId}`);
             let angle = parseFloat(input.value) + 10;
-            if (angle > 360) angle = 360;
             input.value = angle;
             input.oninput();
             moveMotor(motorId);
@@ -613,7 +621,6 @@
         function rotateCCW(motorId) {
             const input = document.getElementById(`cal-angle-motor-${motorId}`);
             let angle = parseFloat(input.value) - 10;
-            if (angle < 0) angle = 0;
             input.value = angle;
             input.oninput();
             moveMotor(motorId);
