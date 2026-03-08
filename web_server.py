@@ -100,16 +100,8 @@ def fps_to_angle(fps_value):
         v2, a2 = VSI_CALIBRATION[i + 1]
         
         if v1 <= fps_value <= v2:
-            # Handle wrap-around: if a2 < a1, add 360 to a2 for interpolation
-            if a2 < a1:
-                a2 += 360
-            
             ratio = (fps_value - v1) / (v2 - v1)
             angle = int(a1 + ratio * (a2 - a1))
-            
-            # Clamp result to 0-360
-            if angle > 360:
-                angle -= 360
             return angle
     
     return 270
