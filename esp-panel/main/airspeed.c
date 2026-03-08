@@ -42,8 +42,8 @@ static const char *TAG = "udp_receiver";
 #define MOTOR_STEP_PERIOD_US 5000  // 5ms = 200 steps/second for full step mode
 #define RESOLUTION_MODE 0  // 0=full step only (no half-stepping)
 
-static float current_position = 0;
-static int seq_idx = 0;
+static int current_position = 0;  // Track actual motor position in degrees
+static int total_steps = 0;  // Cumulative steps taken
 
 // Motor state for hardware timer control
 typedef struct {
@@ -119,22 +119,20 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     }
     
     // Perform one step
-    int seq_len = 4;  // Full step mode only
     const uint8_t (*sequence)[4] = SEQUENCE_FULL;
+    
+    int seq_idx = total_steps % 4;
+    if (motor_state.direction < 0) {
+        seq_idx = (4 - seq_idx) % 4;
+    }
     
     gpio_set_level(MOTOR_IN1, sequence[seq_idx][0]);
     gpio_set_level(MOTOR_IN2, sequence[seq_idx][1]);
     gpio_set_level(MOTOR_IN3, sequence[seq_idx][2]);
     gpio_set_level(MOTOR_IN4, sequence[seq_idx][3]);
     
-    // Update sequence index
-    if (motor_state.direction > 0) {
-        seq_idx = (seq_idx + 1) % seq_len;
-    } else {
-        seq_idx = (seq_idx - 1 + seq_len) % seq_len;
-    }
-    
     motor_state.steps_remaining--;
+    total_steps += motor_state.direction;
     
     if (motor_state.steps_remaining <= 0) {
         motor_state.active = false;
@@ -199,15 +197,7 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     if (target_angle < min_angle) target_angle = min_angle;
     if (target_angle > max_angle) target_angle = max_angle;
     
-    int current = (int)current_position;
-    int diff = target_angle - (current % 360);  // Only compare within current rotation
-    
-    // Handle wrap-around: if diff > 180, go the short way
-    if (diff > 180) {
-        diff -= 360;
-    } else if (diff < -180) {
-        diff += 360;
-    }
+    int diff = target_angle - current_position;
     
     if (diff == 0) {
         ESP_LOGI(TAG, "Motor already at target: %d°", target_angle);
@@ -219,7 +209,7 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     int direction = (diff >= 0) ? 1 : -1;
     
     ESP_LOGI(TAG, "Motor START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
-             current, target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
+             current_position, target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
     
     // Stop any existing movement
     if (motor_state.active) {
@@ -227,7 +217,7 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
         motor_state.active = false;
     }
     
-    // Set up new movement - track cumulative position
+    // Set up new movement
     motor_state.target_angle = target_angle;
     motor_state.steps_remaining = steps;
     motor_state.direction = direction;
@@ -446,7 +436,7 @@ static void udp_receiver_task(void *pvParameters)
             motor_move_to(angle, min_angle, max_angle);
         } else if (strncmp(rx_buffer, "ZERO:", 5) == 0) {
             current_position = 0;
-            seq_idx = 0;
+            total_steps = 0;
             ESP_LOGI(TAG, "Motor zeroed to 0 degrees");
         }
     }
@@ -480,7 +470,7 @@ void app_main(void)
     
     // Don't move the needle on startup - just set internal position
     current_position = 0;
-    seq_idx = 0;
+    total_steps = 0;
     ESP_LOGI(TAG, "Initialization complete. Ready for commands.");
     
     // Main task just sleeps, no need to monitor it

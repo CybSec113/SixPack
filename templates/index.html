@@ -174,11 +174,18 @@
     </div>
 
     <script>
-        function drawGauge(canvasId, angle) {
+        function drawGauge(canvasId, angle, espId, motorId) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
             const centerX = 100, centerY = 100, radius = 90;
+            
+            const calibrationData = {
+                'ESP_Airspeed': [[40, 32], [60, 72], [80, 116], [100, 161], [120, 203], [160, 265], [200, 315]],
+                'ESP_VertSpeed': [[2000, 82], [1500, 37], [1000, 358], [500, 314], [0, 270], [-500, 228], [-1000, 185], [-1500, 143], [-2000, 98]],
+                'ESP_Altimeter': [[0, 0], [10000, 90], [20000, 180], [30000, 270]]
+            };
+            const calPoints = calibrationData[espId] || [];
             
             ctx.clearRect(0, 0, 200, 200);
             ctx.strokeStyle = '#0066cc';
@@ -189,6 +196,11 @@
             
             ctx.strokeStyle = '#666';
             ctx.lineWidth = 1;
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
             for (let i = 0; i < 360; i += 30) {
                 const rad = (i - 90) * Math.PI / 180;
                 const x1 = centerX + (radius - 10) * Math.cos(rad);
@@ -199,6 +211,19 @@
                 ctx.moveTo(x1, y1);
                 ctx.lineTo(x2, y2);
                 ctx.stroke();
+                
+                const labelX = centerX + (radius + 15) * Math.cos(rad);
+                const labelY = centerY + (radius + 15) * Math.sin(rad);
+                ctx.fillText(i + '°', labelX, labelY);
+            }
+            
+            ctx.fillStyle = '#0066cc';
+            ctx.font = '9px Arial';
+            for (const [value, anglePos] of calPoints) {
+                const rad = (anglePos - 90) * Math.PI / 180;
+                const labelX = centerX + (radius - 25) * Math.cos(rad);
+                const labelY = centerY + (radius - 25) * Math.sin(rad);
+                ctx.fillText(value, labelX, labelY);
             }
             
             const needleRad = (angle - 90) * Math.PI / 180;
@@ -326,22 +351,23 @@
                     </div>
                     <div class="slider-group">
                         <label>Angle (deg):</label>
-                        <input type="number" id="cal-angle-motor-${m}" value="0" min="-3600" max="3600">
+                        <input type="number" id="cal-angle-motor-${m}" value="0" min="-3600" max="3600" onchange="updateGaugePreview(${m})">
                     </div>
                     <div class="slider-group">
                         <label>X-Plane:</label>
-                        <input type="number" id="cal-xplane-motor-${m}" value="0">
+                        <input type="number" id="cal-xplane-motor-${m}" value="0" onchange="updateGaugeFromXPlane(${m})">
                     </div>
                     ${isAltimeter ? `<div class="slider-group">
                         <label>Altitude (ft):</label>
-                        <input type="number" id="cal-altitude-motor-${m}" value="0" min="0" max="50000" step="100">
+                        <input type="number" id="cal-altitude-motor-${m}" value="0" min="0" max="50000" step="100" onchange="updateGaugeFromAltitude(${m})">
                     </div>` : ''}
                     ${isVSI ? `<div class="slider-group">
                         <label>FPM:</label>
-                        <input type="number" id="cal-fps-motor-${m}" value="0" min="-2000" max="2000" step="100">
+                        <input type="number" id="cal-fps-motor-${m}" value="0" min="-2000" max="2000" step="100" onchange="updateGaugeFromFPS(${m})">
                     </div>` : ''}
                     <div class="motor-buttons">
-                        ${isVSI ? `<button onclick="moveMotor(${m})">Move (Angle)</button><button onclick="moveVSI(${m})">Move to FPM</button>` : `<button onclick="moveMotor(${m})">Move</button>`}
+                        <button onclick="moveMotor(${m})">Move (Angle)</button>
+                        ${isVSI ? `<button onclick="moveVSI(${m})">Move (FPM)</button>` : `<button onclick="moveXPlane(${m})">Move (X-Plane)</button>`}
                         <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
                         <button onclick="rotateCCW(${m})" style="background: #aa0000;">CCW 10°</button>
                         <button onclick="zeroMotor(${m})" style="background: #666;">Zero</button>
@@ -353,62 +379,8 @@
             
             for (let m = 0; m < motorCount; m++) {
                 const input = document.getElementById(`cal-angle-motor-${m}`);
-                const valueDisplay = document.getElementById(`gauge-value-motor-${m}`);
-                const altitudeInput = document.getElementById(`cal-altitude-motor-${m}`);
-                const xplaneInput = document.getElementById(`cal-xplane-motor-${m}`);
-                const fpsInput = document.getElementById(`cal-fps-motor-${m}`);
-                
                 if (input) {
-                    input.oninput = () => {
-                        valueDisplay.textContent = input.value + '°';
-                        drawGauge(`gauge-motor-${m}`, parseFloat(input.value));
-                    };
-                    drawGauge(`gauge-motor-${m}`, 0);
-                }
-                
-                if (altitudeInput) {
-                    altitudeInput.oninput = () => {
-                        const altitude = parseInt(altitudeInput.value);
-                        const angle = (altitude % 1000) * 0.36;
-                        input.value = angle;
-                        valueDisplay.textContent = angle.toFixed(1) + '°';
-                        drawGauge(`gauge-motor-${m}`, angle);
-                    };
-                }
-                
-                if (xplaneInput) {
-                    xplaneInput.oninput = () => {
-                        const value = parseInt(xplaneInput.value);
-                        fetch('/api/xplane-convert', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ esp_id: currentDevice, motor_id: m, value: value })
-                        }).then(r => r.json()).then(data => {
-                            if (data.status === 'ok') {
-                                moveMotor(m);
-                            }
-                        });
-                    };
-                }
-                
-                if (fpsInput) {
-                    fpsInput.oninput = () => {
-                        const fps = parseInt(fpsInput.value);
-                        const vsiCal = [[2000, 82], [1500, 37], [1000, 358], [500, 314], [0, 270], [-500, 228], [-1000, 185], [-1500, 143], [-2000, 98]];
-                        let angle = 270;
-                        for (let i = 0; i < vsiCal.length - 1; i++) {
-                            const [v1, a1] = vsiCal[i];
-                            const [v2, a2] = vsiCal[i + 1];
-                            if ((v1 >= fps && fps >= v2) || (v2 >= fps && fps >= v1)) {
-                                const ratio = (fps - v1) / (v2 - v1);
-                                angle = a1 + ratio * (a2 - a1);
-                                break;
-                            }
-                        }
-                        input.value = angle.toFixed(1);
-                        valueDisplay.textContent = angle.toFixed(1) + '°';
-                        drawGauge(`gauge-motor-${m}`, angle);
-                    };
+                    drawGauge(`gauge-motor-${m}`, 0, espId, m);
                 }
             }
         }
@@ -441,12 +413,78 @@
             updateDeviceList();
         }
 
+        function updateGaugePreview(motorId) {
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            const valueDisplay = document.getElementById(`gauge-value-motor-${motorId}`);
+            valueDisplay.textContent = input.value + '°';
+            drawGauge(`gauge-motor-${motorId}`, parseFloat(input.value), currentDevice, motorId);
+        }
+
+        function updateGaugeFromAltitude(motorId) {
+            const altitudeInput = document.getElementById(`cal-altitude-motor-${motorId}`);
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            const valueDisplay = document.getElementById(`gauge-value-motor-${motorId}`);
+            const altitude = parseInt(altitudeInput.value);
+            const angle = (altitude % 1000) * 0.36;
+            input.value = angle;
+            valueDisplay.textContent = angle.toFixed(1) + '°';
+            drawGauge(`gauge-motor-${motorId}`, angle, currentDevice, motorId);
+        }
+
+        function updateGaugeFromXPlane(motorId) {
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            const valueDisplay = document.getElementById(`gauge-value-motor-${motorId}`);
+            const xplaneInput = document.getElementById(`cal-xplane-motor-${motorId}`);
+            const value = parseInt(xplaneInput.value);
+            fetch('/api/xplane-convert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, value: value })
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'ok') {
+                    input.value = data.angle;
+                    valueDisplay.textContent = data.angle + '°';
+                    drawGauge(`gauge-motor-${motorId}`, data.angle, currentDevice, motorId);
+                }
+            });
+        }
+
+        function updateGaugeFromFPS(motorId) {
+            const input = document.getElementById(`cal-angle-motor-${motorId}`);
+            const valueDisplay = document.getElementById(`gauge-value-motor-${motorId}`);
+            const fpsInput = document.getElementById(`cal-fps-motor-${motorId}`);
+            const fps = parseInt(fpsInput.value);
+            const vsiCal = [[2000, 82], [1500, 37], [1000, 358], [500, 314], [0, 270], [-500, 228], [-1000, 185], [-1500, 143], [-2000, 98]];
+            let angle = 270;
+            for (let i = 0; i < vsiCal.length - 1; i++) {
+                const [v1, a1] = vsiCal[i];
+                const [v2, a2] = vsiCal[i + 1];
+                if ((v1 >= fps && fps >= v2) || (v2 >= fps && fps >= v1)) {
+                    const ratio = (fps - v1) / (v2 - v1);
+                    angle = a1 + ratio * (a2 - a1);
+                    break;
+                }
+            }
+            input.value = angle.toFixed(1);
+            valueDisplay.textContent = angle.toFixed(1) + '°';
+            drawGauge(`gauge-motor-${motorId}`, angle, currentDevice, motorId);
+        }
+
         function moveMotor(motorId = 0) {
             const angle = parseFloat(document.getElementById(`cal-angle-motor-${motorId}`).value);
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: angle, min_angle: -3600, max_angle: 3600 })
+            });
+        }
+
+        function moveXPlane(motorId = 0) {
+            const value = parseInt(document.getElementById(`cal-xplane-motor-${motorId}`).value);
+            fetch('/api/xplane-convert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, value: value })
             });
         }
 
@@ -460,7 +498,7 @@
                 if (data.status === 'ok') {
                     document.getElementById(`cal-angle-motor-${motorId}`).value = data.angle;
                     document.getElementById(`gauge-value-motor-${motorId}`).textContent = data.angle + '°';
-                    drawGauge(`gauge-motor-${motorId}`, data.angle);
+                    drawGauge(`gauge-motor-${motorId}`, data.angle, currentDevice, motorId);
                 }
             });
         }
