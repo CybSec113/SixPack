@@ -75,17 +75,17 @@ def send_command(esp_id, message):
         return True
     return False
 
-# VSI calibration: maps FPS values to angles
+# VSI calibration: maps FPM values to angles
 VSI_CALIBRATION = [
-    (2000, 82),
-    (1500, 37),
-    (1000, 358),
-    (500, 314),
-    (0, 270),
-    (-500, 228),
-    (-1000, 185),
-    (-1500, 143),
     (-2000, 98),
+    (-1500, 143),
+    (-1000, 185),
+    (-500, 228),
+    (0, 270),
+    (500, 314),
+    (1000, 358),
+    (1500, 37),
+    (2000, 82),
 ]
 
 def fps_to_angle(fps_value):
@@ -99,13 +99,17 @@ def fps_to_angle(fps_value):
         v1, a1 = VSI_CALIBRATION[i]
         v2, a2 = VSI_CALIBRATION[i + 1]
         
-        if v1 >= fps_value >= v2:
+        if v1 <= fps_value <= v2:
+            # Handle wrap-around: if a2 < a1, add 360 to a2 for interpolation
+            if a2 < a1:
+                a2 += 360
+            
             ratio = (fps_value - v1) / (v2 - v1)
             angle = int(a1 + ratio * (a2 - a1))
-            return angle
-        elif v2 >= fps_value >= v1:
-            ratio = (fps_value - v1) / (v2 - v1)
-            angle = int(a1 + ratio * (a2 - a1))
+            
+            # Clamp result to 0-360
+            if angle > 360:
+                angle -= 360
             return angle
     
     return 270

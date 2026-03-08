@@ -75,8 +75,8 @@ static const int calibration_count = 9;
 
 static int value_to_angle(int value)
 {
-    if (value <= -2000) return 0;
-    if (value >= 2000) return 360;
+    if (value <= -2000) return 98;
+    if (value >= 2000) return 82;
     
     for (int i = 0; i < calibration_count - 1; i++) {
         if (value >= calibration[i].value && value <= calibration[i + 1].value) {
@@ -85,8 +85,14 @@ static int value_to_angle(int value)
             int a1 = calibration[i].angle;
             int a2 = calibration[i + 1].angle;
             
+            // Handle wrap-around: if a2 < a1, add 360 to a2 for interpolation
+            if (a2 < a1) a2 += 360;
+            
             float ratio = (float)(value - v1) / (v2 - v1);
             int angle = (int)(a1 + ratio * (a2 - a1));
+            
+            // Clamp result to 0-360
+            if (angle > 360) angle -= 360;
             return angle;
         }
     }
