@@ -284,8 +284,10 @@ def xplane_convert():
         return jsonify({'status': 'error', 'message': 'value required'}), 400
     
     if send_command(esp_id, f"VALUE:{motor_id}:{int(value)}"):
-        # Calculate angle for preview
-        angle = value_to_angle(int(value)) if esp_id == 'ESP_Airspeed' else int(value)
+        if esp_id == 'ESP_Airspeed':
+            angle = value_to_angle(int(value))
+        else:
+            angle = int(value)
         return jsonify({'status': 'ok', 'value': value, 'angle': angle})
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
 

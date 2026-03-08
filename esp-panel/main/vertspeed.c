@@ -85,13 +85,9 @@ static int value_to_angle(int value)
             int a1 = calibration[i].angle;
             int a2 = calibration[i + 1].angle;
             
-            // For absolute values, interpolate directly without wrapping
             float ratio = (float)(value - v1) / (v2 - v1);
             int angle = (int)(a1 + ratio * (a2 - a1));
             
-            // Normalize to 0-360 range
-            while (angle < 0) angle += 360;
-            while (angle >= 360) angle -= 360;
             return angle;
         }
     }
@@ -174,9 +170,14 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     if (target_angle < min_angle) target_angle = min_angle;
     if (target_angle > max_angle) target_angle = max_angle;
     
-    // Clamp to 0-360 for linear instruments
-    if (target_angle < 0) target_angle = 0;
-    if (target_angle > 360) target_angle = 360;
+    // Normalize current position to 0-360 for comparison
+    int current_norm = current_position % 360;
+    if (current_norm < 0) current_norm += 360;
+    
+    // If target is much smaller than current (wrapping through 0), add 360
+    if (target_angle < current_norm - 180) {
+        target_angle += 360;
+    }
     
     // Calculate target steps from zero (absolute position)
     int target_steps = (target_angle * 2048) / 360;

@@ -479,6 +479,12 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, value: value })
+            }).then(r => r.json()).then(data => {
+                if (data.status === 'ok') {
+                    document.getElementById(`cal-angle-motor-${motorId}`).value = data.angle;
+                    document.getElementById(`gauge-value-motor-${motorId}`).textContent = data.angle + '°';
+                    drawGauge(`gauge-motor-${motorId}`, data.angle, currentDevice, motorId);
+                }
             });
         }
 
