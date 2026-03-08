@@ -85,8 +85,13 @@ static int value_to_angle(int value)
             int a1 = calibration[i].angle;
             int a2 = calibration[i + 1].angle;
             
+            // For absolute values, interpolate directly without wrapping
             float ratio = (float)(value - v1) / (v2 - v1);
             int angle = (int)(a1 + ratio * (a2 - a1));
+            
+            // Normalize to 0-360 range
+            while (angle < 0) angle += 360;
+            while (angle >= 360) angle -= 360;
             return angle;
         }
     }
@@ -200,6 +205,7 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     
     ESP_ERROR_CHECK(gptimer_set_raw_count(motor_timer, 0));
     ESP_ERROR_CHECK(gptimer_start(motor_timer));
+}
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {

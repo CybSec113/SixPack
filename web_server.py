@@ -102,6 +102,12 @@ def fps_to_angle(fps_value):
         if v1 <= fps_value <= v2:
             ratio = (fps_value - v1) / (v2 - v1)
             angle = int(a1 + ratio * (a2 - a1))
+            
+            # Normalize to 0-360 range
+            while angle < 0:
+                angle += 360
+            while angle >= 360:
+                angle -= 360
             return angle
     
     return 270
