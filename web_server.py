@@ -265,7 +265,7 @@ def move_vsi():
     if fps_value is None:
         return jsonify({'status': 'error', 'message': 'fps value required'}), 400
     
-    angle = fps_to_angle(fps_value)
+    angle = fps_to_angle(int(fps_value))
     
     if send_command(esp_id, f"MOVE:{motor_id}:{angle}:0:360"):
         return jsonify({'status': 'ok', 'fps': fps_value, 'angle': angle})

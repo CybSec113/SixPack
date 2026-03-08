@@ -58,25 +58,25 @@ typedef struct {
     int angle;
 } cal_point_t;
 
-// VSI: -2000 to +2000 fpm, 0 at 270° (9 o'clock)
+// VSI: -2000 to +2000 fpm, linear 0° to 360° (no wrapping)
 static const cal_point_t calibration[] = {
-    { 2000,  82}, // +172 CW
-    { 1500,  37}, // +127 CW
-    { 1000, 358}, // +88 CW
-    {  500, 314}, // +44 CW
+    {-2000, 98},
+    {-1500, 143},
+    {-1000, 185},
+    { -500, 228},
     {    0, 270},
-    { -500, 228}, // -42 CCW
-    {-1000, 185}, // -85 CCW
-    {-1500, 143}, // -127 CCW
-    {-2000,  98}, // -172 CCW
+    {  500, 314},
+    { 1000, 358},
+    { 1500, 37},
+    { 2000, 82},
 };
 
 static const int calibration_count = 9;
 
 static int value_to_angle(int value)
 {
-    if (value <= -2000) return 98;
-    if (value >= 2000) return 82;
+    if (value <= -2000) return 0;
+    if (value >= 2000) return 360;
     
     for (int i = 0; i < calibration_count - 1; i++) {
         if (value >= calibration[i].value && value <= calibration[i + 1].value) {
@@ -168,6 +168,10 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
 {
     if (target_angle < min_angle) target_angle = min_angle;
     if (target_angle > max_angle) target_angle = max_angle;
+    
+    // Clamp to 0-360 for linear instruments
+    if (target_angle < 0) target_angle = 0;
+    if (target_angle > 360) target_angle = 360;
     
     // Calculate target steps from zero (absolute position)
     int target_steps = (target_angle * 2048) / 360;
