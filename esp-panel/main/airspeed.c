@@ -122,9 +122,7 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     const uint8_t (*sequence)[4] = SEQUENCE_FULL;
     
     int seq_idx = total_steps % 4;
-    if (motor_state.direction < 0) {
-        seq_idx = (4 - seq_idx) % 4;
-    }
+    if (seq_idx < 0) seq_idx += 4;
     
     gpio_set_level(MOTOR_IN1, sequence[seq_idx][0]);
     gpio_set_level(MOTOR_IN2, sequence[seq_idx][1]);

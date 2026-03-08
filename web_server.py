@@ -110,6 +110,22 @@ def fps_to_angle(fps_value):
     
     return 270
 
+def value_to_angle(value):
+    """Convert airspeed value to angle using calibration"""
+    airspeed_cal = [(40, 32), (60, 72), (80, 116), (100, 161), (120, 203), (160, 265), (200, 315)]
+    if value <= airspeed_cal[0][0]:
+        return airspeed_cal[0][1]
+    if value >= airspeed_cal[-1][0]:
+        return airspeed_cal[-1][1]
+    
+    for i in range(len(airspeed_cal) - 1):
+        v1, a1 = airspeed_cal[i]
+        v2, a2 = airspeed_cal[i + 1]
+        if v1 <= value <= v2:
+            ratio = (value - v1) / (v2 - v1)
+            return int(a1 + ratio * (a2 - a1))
+    return airspeed_cal[0][1]
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -266,7 +282,9 @@ def xplane_convert():
         return jsonify({'status': 'error', 'message': 'value required'}), 400
     
     if send_command(esp_id, f"VALUE:{motor_id}:{int(value)}"):
-        return jsonify({'status': 'ok', 'value': value})
+        # Calculate angle for preview
+        angle = value_to_angle(int(value)) if esp_id == 'ESP_Airspeed' else int(value)
+        return jsonify({'status': 'ok', 'value': value, 'angle': angle})
     return jsonify({'status': 'error', 'message': 'ESP not found'}), 404
 
 @app.route('/api/bounds/<esp_id>/<int:motor_id>', methods=['GET', 'POST'])
