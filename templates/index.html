@@ -352,22 +352,14 @@
                     <div class="slider-group">
                         <label>Angle (deg):</label>
                         <input type="number" id="cal-angle-motor-${m}" value="0" min="-3600" max="3600" onchange="updateGaugePreview(${m})">
+                        <button onclick="moveMotor(${m})" style="padding: 5px 10px; font-size: 11px;">Move</button>
                     </div>
                     <div class="slider-group">
                         <label>X-Plane:</label>
                         <input type="number" id="cal-xplane-motor-${m}" value="0" onchange="updateGaugeFromXPlane(${m})">
+                        <button onclick="moveXPlane(${m})" style="padding: 5px 10px; font-size: 11px;">Move</button>
                     </div>
-                    ${isAltimeter ? `<div class="slider-group">
-                        <label>Altitude (ft):</label>
-                        <input type="number" id="cal-altitude-motor-${m}" value="0" min="0" max="50000" step="100" onchange="updateGaugeFromAltitude(${m})">
-                    </div>` : ''}
-                    ${isVSI ? `<div class="slider-group">
-                        <label>FPM:</label>
-                        <input type="number" id="cal-fps-motor-${m}" value="0" min="-2000" max="2000" step="100" onchange="updateGaugeFromFPS(${m})">
-                    </div>` : ''}
                     <div class="motor-buttons">
-                        <button onclick="moveMotor(${m})">Move (Angle)</button>
-                        ${isVSI ? `<button onclick="moveVSI(${m})">Move (FPM)</button>` : `<button onclick="moveXPlane(${m})">Move (X-Plane)</button>`}
                         <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
                         <button onclick="rotateCCW(${m})" style="background: #aa0000;">CCW 10°</button>
                         <button onclick="zeroMotor(${m})" style="background: #666;">Zero</button>
@@ -380,7 +372,9 @@
             for (let m = 0; m < motorCount; m++) {
                 const input = document.getElementById(`cal-angle-motor-${m}`);
                 if (input) {
-                    drawGauge(`gauge-motor-${m}`, 0, espId, m);
+                    const initialAngle = espId === 'ESP_VertSpeed' ? 270 : 0;
+                    input.value = initialAngle;
+                    drawGauge(`gauge-motor-${m}`, initialAngle, espId, m);
                 }
             }
         }
@@ -452,7 +446,7 @@
         function updateGaugeFromFPS(motorId) {
             const input = document.getElementById(`cal-angle-motor-${motorId}`);
             const valueDisplay = document.getElementById(`gauge-value-motor-${motorId}`);
-            const fpsInput = document.getElementById(`cal-fps-motor-${motorId}`);
+            const fpsInput = document.getElementById(`cal-xplane-motor-${motorId}`);
             const fps = parseInt(fpsInput.value);
             const vsiCal = [[2000, 82], [1500, 37], [1000, 358], [500, 314], [0, 270], [-500, 228], [-1000, 185], [-1500, 143], [-2000, 98]];
             let angle = 270;
@@ -489,7 +483,7 @@
         }
 
         function moveVSI(motorId = 0) {
-            const fps = parseFloat(document.getElementById(`cal-fps-motor-${motorId}`).value);
+            const fps = parseInt(document.getElementById(`cal-xplane-motor-${motorId}`).value);
             fetch('/api/move-vsi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

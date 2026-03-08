@@ -34,8 +34,8 @@ static const char *TAG = "udp_receiver";
 #define MOTOR_STEP_PERIOD_US 5000
 #define RESOLUTION_MODE 0
 
-static float current_position = 0;
-static int seq_idx = 0;
+static int current_position = 0;  // Track actual motor position in degrees
+static int total_steps_from_zero = 0;  // Total steps taken from 0°
 
 typedef struct {
     int target_angle;
@@ -100,21 +100,19 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
         return false;
     }
     
-    int seq_len = 4;
+    // Perform one step
     const uint8_t (*sequence)[4] = SEQUENCE_FULL;
+    
+    int seq_idx = total_steps_from_zero % 4;
+    if (seq_idx < 0) seq_idx += 4;
     
     gpio_set_level(MOTOR_IN1, sequence[seq_idx][0]);
     gpio_set_level(MOTOR_IN2, sequence[seq_idx][1]);
     gpio_set_level(MOTOR_IN3, sequence[seq_idx][2]);
     gpio_set_level(MOTOR_IN4, sequence[seq_idx][3]);
     
-    if (motor_state.direction > 0) {
-        seq_idx = (seq_idx + 1) % seq_len;
-    } else {
-        seq_idx = (seq_idx - 1 + seq_len) % seq_len;
-    }
-    
     motor_state.steps_remaining--;
+    total_steps_from_zero += motor_state.direction;
     
     if (motor_state.steps_remaining <= 0) {
         motor_state.active = false;
@@ -166,63 +164,25 @@ static void motor_init(void)
     ESP_LOGI(TAG, "Motor timer initialized with %d µs step period", MOTOR_STEP_PERIOD_US);
 }
 
-static int get_fpm_sign_from_angle(int angle)
-{
-    // Determine FPM sign from dial angle using calibration layout:
-    // Positive FPM: angles 314°-360° and 0°-82°
-    // Negative FPM: angles 98°-228°
-    angle = ((angle % 360) + 360) % 360;
-    
-    if (angle >= 314 || angle <= 82) {
-        return 1;  // Positive FPM
-    } else if (angle >= 98 && angle <= 228) {
-        return -1;  // Negative FPM
-    } else {
-        return 0;  // Transition/zero region
-    }
-}
-
 static void motor_move_to(int target_angle, int min_angle, int max_angle)
 {
     if (target_angle < min_angle) target_angle = min_angle;
     if (target_angle > max_angle) target_angle = max_angle;
     
-    int current = (int)current_position;
-    int diff = target_angle - current;
+    // Calculate target steps from zero (absolute position)
+    int target_steps = (target_angle * 2048) / 360;
+    int diff_steps = target_steps - total_steps_from_zero;
     
-    if (diff == 0) {
+    if (diff_steps == 0) {
         ESP_LOGI(TAG, "Motor already at target: %d°", target_angle);
         return;
     }
     
-    int current_sign = get_fpm_sign_from_angle(current);
-    int target_sign = get_fpm_sign_from_angle(target_angle);
+    int direction = (diff_steps >= 0) ? 1 : -1;
+    int steps = abs(diff_steps);
     
-    // When crossing between positive and negative FPM, always pass through 270° (0 FPM)
-    if (current_sign > 0 && target_sign < 0) {
-        // Positive to negative: force long path through 270°
-        if (diff > 0) {
-            diff = diff - 360;
-        }
-    } else if (current_sign < 0 && target_sign > 0) {
-        // Negative to positive: force long path through 270°
-        if (diff < 0) {
-            diff = diff + 360;
-        }
-    } else if (abs(diff) > 180) {
-        // Same FPM sign or near zero: take shortest path
-        if (diff > 180) {
-            diff = diff - 360;
-        } else if (diff < -180) {
-            diff = diff + 360;
-        }
-    }
-    
-    int steps = (int)(abs(diff) / (360.0 / 2048));
-    int direction = (diff >= 0) ? 1 : -1;
-    
-    ESP_LOGI(TAG, "Motor START: current=%d°, target=%d° (diff: %d°, steps: %d, dir: %s)", 
-             current, target_angle, diff, steps, (direction > 0) ? "CW" : "CCW");
+    ESP_LOGI(TAG, "Motor START: current=%d° (%d steps), target=%d° (%d steps), diff=%d steps, dir=%s", 
+             current_position, total_steps_from_zero, target_angle, target_steps, diff_steps, (direction > 0) ? "CW" : "CCW");
     
     if (motor_state.active) {
         ESP_ERROR_CHECK(gptimer_stop(motor_timer));
@@ -445,7 +405,7 @@ static void udp_receiver_task(void *pvParameters)
             motor_move_to(angle, min_angle, max_angle);
         } else if (strncmp(rx_buffer, "ZERO:", 5) == 0) {
             current_position = 270;
-            seq_idx = 0;
+            total_steps_from_zero = (270 * 2048) / 360;
             ESP_LOGI(TAG, "Motor zeroed to 270 degrees (0 fpm)");
         }
     }
@@ -478,7 +438,7 @@ void app_main(void)
     
     // Don't move the needle on startup - just set internal position
     current_position = 270;
-    seq_idx = 0;
+    total_steps_from_zero = (270 * 2048) / 360;
     ESP_LOGI(TAG, "Initialization complete. Ready for commands.");
     
     while (1) {
