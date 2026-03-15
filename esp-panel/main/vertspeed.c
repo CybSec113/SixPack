@@ -170,17 +170,25 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     if (target_angle < min_angle) target_angle = min_angle;
     if (target_angle > max_angle) target_angle = max_angle;
     
-    // Normalize current position to 0-360 for comparison
+    // Normalize current position to 0-360
     int current_norm = current_position % 360;
     if (current_norm < 0) current_norm += 360;
     
-    // If target is much smaller than current (wrapping through 0), add 360
-    if (target_angle < current_norm - 180) {
-        target_angle += 360;
+    // Calculate shortest path on the dial, wrapping around 270 (0 fpm)
+    // The needle operates between 98° (-2000 fpm) and 82° (+2000 fpm)
+    // It should NEVER cross the gap between 82° and 98°
+    int diff = target_angle - current_norm;
+    // If the direct path would cross the 82-98 gap, go the other way
+    if (diff > 0 && current_norm < 90 && target_angle > 90) {
+        // Would cross gap going forward, go backward instead
+        diff -= 360;
+    } else if (diff < 0 && current_norm > 90 && target_angle < 90) {
+        // Would cross gap going backward, go forward instead
+        diff += 360;
     }
     
     // Calculate target steps from zero (absolute position)
-    int target_steps = (target_angle * 2048) / 360;
+    int target_steps = total_steps_from_zero + (diff * 2048) / 360;
     int diff_steps = target_steps - total_steps_from_zero;
     
     if (diff_steps == 0) {
@@ -391,6 +399,8 @@ static void udp_receiver_task(void *pvParameters)
                 if (sscanf(&rx_buffer[6], "%d:%d", &motor_id, &value) != 2) {
                     motor_id = 0;
                 }
+                if (value > 2000) value = 2000;
+                if (value < -2000) value = -2000;
                 int angle = value_to_angle(value);
                 ESP_LOGI(TAG, "Motor %d: Converted value %d fpm to angle %d degrees", motor_id, value, angle);
                 motor_move_to(angle, 0, 360);

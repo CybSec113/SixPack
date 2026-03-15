@@ -75,14 +75,6 @@ static const uint8_t SEQUENCE_FULL[4][4] = {
     {1, 0, 0, 1},
 };
 
-// Reversed sequence for motor 1 (opposite direction)
-static const uint8_t SEQUENCE_FULL_REVERSED[4][4] = {
-    {1, 0, 0, 1},
-    {0, 0, 1, 1},
-    {0, 1, 1, 0},
-    {1, 1, 0, 0},
-};
-
 // Calibration points: value (degrees heading) -> angle (degrees on gauge)
 typedef struct {
     int value;
@@ -150,13 +142,14 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     
     // Perform one step
     int seq_len = 4;  // Full step mode only
-    const uint8_t (*sequence)[4] = (motor_id == 0) ? SEQUENCE_FULL : SEQUENCE_FULL_REVERSED;
+    const uint8_t (*sequence)[4] = SEQUENCE_FULL;
     
     if (motor_id == 0) {
-        gpio_set_level(MOTOR_IN1, sequence[seq_idx[0]][0]);
-        gpio_set_level(MOTOR_IN2, sequence[seq_idx[0]][1]);
-        gpio_set_level(MOTOR_IN3, sequence[seq_idx[0]][2]);
-        gpio_set_level(MOTOR_IN4, sequence[seq_idx[0]][3]);
+        // Reverse pin order for motor 0 to fix direction
+        gpio_set_level(MOTOR_IN4, sequence[seq_idx[0]][0]);
+        gpio_set_level(MOTOR_IN3, sequence[seq_idx[0]][1]);
+        gpio_set_level(MOTOR_IN2, sequence[seq_idx[0]][2]);
+        gpio_set_level(MOTOR_IN1, sequence[seq_idx[0]][3]);
     } else {
         gpio_set_level(MOTOR2_IN1, sequence[seq_idx[1]][0]);
         gpio_set_level(MOTOR2_IN2, sequence[seq_idx[1]][1]);
@@ -164,7 +157,7 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
         gpio_set_level(MOTOR2_IN4, sequence[seq_idx[1]][3]);
     }
     
-    // Update sequence index (always increment for reversed sequence motor)
+    // Update sequence index
     if (motor_id == 0) {
         if (state->direction > 0) {
             seq_idx[0] = (seq_idx[0] + 1) % seq_len;
@@ -172,22 +165,20 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
             seq_idx[0] = (seq_idx[0] - 1 + seq_len) % seq_len;
         }
     } else {
-        // Motor 1 uses reversed sequence, so always increment
-        seq_idx[1] = (seq_idx[1] + 1) % seq_len;
+        if (state->direction > 0) {
+            seq_idx[1] = (seq_idx[1] + 1) % seq_len;
+        } else {
+            seq_idx[1] = (seq_idx[1] - 1 + seq_len) % seq_len;
+        }
     }
     
     state->steps_remaining--;
     
-    // Update position in steps (always increment for reversed sequence motor)
-    if (motor_id == 0) {
-        if (state->direction > 0) {
-            current_position_steps[motor_id]++;
-        } else {
-            current_position_steps[motor_id]--;
-        }
-    } else {
-        // Motor 1 uses reversed sequence, so always increment
+    // Update position in steps
+    if (state->direction > 0) {
         current_position_steps[motor_id]++;
+    } else {
+        current_position_steps[motor_id]--;
     }
     
     if (state->steps_remaining <= 0) {
@@ -296,7 +287,7 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     int steps = (abs(diff) * 2048) / 360;
     int direction = (diff >= 0) ? 1 : -1;
     
-    int actual_direction = (motor_id == 0) ? direction : -direction;
+    int actual_direction = direction;
     ESP_LOGI(TAG, "Motor %d START: current=%d° (steps:%d), target=%d° (diff: %d°, steps: %d, dir: %s)", 
              motor_id, current_norm, current_position_steps[motor_id], target_angle, diff, steps, (actual_direction > 0) ? "CW" : "CCW");
     
@@ -310,15 +301,12 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     motor_state[motor_id].motor_id = motor_id;
     motor_state[motor_id].target_angle = target_norm;
     motor_state[motor_id].steps_remaining = steps;
-    // Motor 1 uses reversed sequence, so negate direction
-    motor_state[motor_id].direction = (motor_id == 0) ? direction : -direction;
+    motor_state[motor_id].direction = direction;
     motor_state[motor_id].active = true;
     
     // Reset timer count and start
     ESP_ERROR_CHECK(gptimer_set_raw_count(motor_timer[motor_id], 0));
     ESP_ERROR_CHECK(gptimer_start(motor_timer[motor_id]));
-    
-    ESP_LOGI(TAG, "Motor %d movement started", motor_id);
 }
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
