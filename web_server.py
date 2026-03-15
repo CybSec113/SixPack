@@ -245,7 +245,7 @@ def move_motor():
     if esp_id == 'ESP_Inputs':
         return jsonify({'status': 'error', 'message': 'ESP_Inputs has no motors'}), 400
     
-    motor_id = data.get('motor_id', 0)
+    motor_id = int(data.get('motor_id', 0))
     angle = data.get('angle')
     min_angle = data.get('min_angle', 0)
     max_angle = data.get('max_angle', 360)
@@ -277,7 +277,7 @@ def move_vsi():
 def xplane_convert():
     data = request.json
     esp_id = data.get('esp_id')
-    motor_id = data.get('motor_id', 0)
+    motor_id = int(data.get('motor_id', 0))
     value = data.get('value')
     
     if value is None:

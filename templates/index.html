@@ -342,27 +342,28 @@
                 const motorNum = m + 1;
                 const isAltimeter = espId === 'ESP_Altimeter' && m === 0;
                 const isVSI = espId === 'ESP_VertSpeed';
+                const motorId = m;
                 
                 html += `<div class="motor-section">
                     <h3>Motor ${motorNum}${isVSI ? ' (Vertical Speed)' : ''}</h3>
                     <div class="gauge-container">
-                        <canvas id="gauge-motor-${m}" width="200" height="200"></canvas>
-                        <div class="gauge-value" id="gauge-value-motor-${m}">0°</div>
+                        <canvas id="gauge-motor-${motorId}" width="200" height="200"></canvas>
+                        <div class="gauge-value" id="gauge-value-motor-${motorId}">0°</div>
                     </div>
                     <div class="slider-group">
                         <label>Angle (deg):</label>
-                        <input type="number" id="cal-angle-motor-${m}" value="0" min="-3600" max="3600" onchange="updateGaugePreview(${m})">
-                        <button onclick="moveMotor(${m})" style="padding: 5px 10px; font-size: 11px;">Move</button>
+                        <input type="number" id="cal-angle-motor-${motorId}" value="0" min="-3600" max="3600" onchange="updateGaugePreview(${motorId})">
+                        <button onclick="moveMotor(${motorId})" style="padding: 5px 10px; font-size: 11px;">Move</button>
                     </div>
                     <div class="slider-group">
                         <label>X-Plane:</label>
-                        <input type="number" id="cal-xplane-motor-${m}" value="0" onchange="updateGaugeFromXPlane(${m})">
-                        <button onclick="moveXPlane(${m})" style="padding: 5px 10px; font-size: 11px;">Move</button>
+                        <input type="number" id="cal-xplane-motor-${motorId}" value="0" onchange="updateGaugeFromXPlane(${motorId})">
+                        <button onclick="moveXPlane(${motorId})" style="padding: 5px 10px; font-size: 11px;">Move</button>
                     </div>
                     <div class="motor-buttons">
-                        <button onclick="rotateCW(${m})" style="background: #00aa00;">CW 10°</button>
-                        <button onclick="rotateCCW(${m})" style="background: #aa0000;">CCW 10°</button>
-                        <button onclick="zeroMotor(${m})" style="background: #666;">Zero</button>
+                        <button onclick="rotateCW(${motorId})" style="background: #00aa00;">CW 10°</button>
+                        <button onclick="rotateCCW(${motorId})" style="background: #aa0000;">CCW 10°</button>
+                        <button onclick="zeroMotor(${motorId})" style="background: #666;">Zero</button>
                     </div>
                 </div>`;
             }
