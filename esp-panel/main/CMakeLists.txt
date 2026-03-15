@@ -18,4 +18,4 @@ endif()
 
 idf_component_register(SRCS ${SRCS}
                        INCLUDE_DIRS "."
-                       REQUIRES esp_wifi nvs_flash esp_netif lwip driver esp_http_client)
+                       REQUIRES esp_wifi nvs_flash esp_netif lwip driver esp_http_client esp_lcd esp_driver_i2c)

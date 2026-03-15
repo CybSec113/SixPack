@@ -24,6 +24,10 @@
 #include "lwip/netif.h"
 #include "driver/gpio.h"
 #include "driver/gptimer.h"
+#include "driver/i2c_master.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_ssd1306.h"
 #include "config.h"
 #include "esp_http_client.h"
 
@@ -35,10 +39,19 @@ static const char *TAG = "udp_receiver";
 #define LOG_PORT       9999
 #define LOG_BUFFER_SIZE 1024
 
-#define MOTOR_IN1 3
-#define MOTOR_IN2 4
-#define MOTOR_IN3 5
-#define MOTOR_IN4 6
+#define I2C_SDA         5
+#define I2C_SCL         6
+#define I2C_ADDR        0x3C
+#define LCD_W           72
+#define LCD_H           40
+#define LCD_X_GAP       28
+#define LCD_Y_GAP       14
+#define LCD_BUF_SIZE    (LCD_W * LCD_H / 8)
+
+#define MOTOR_IN1 7
+#define MOTOR_IN2 8
+#define MOTOR_IN3 9
+#define MOTOR_IN4 10
 #define MOTOR_STEP_PERIOD_US 5000  // 5ms = 200 steps/second for full step mode
 #define RESOLUTION_MODE 0  // 0=full step only (no half-stepping)
 
@@ -189,6 +202,10 @@ typedef struct {
     int max_angle;
 } motor_cmd_t;
 
+static int log_socket = -1;
+static esp_lcd_panel_handle_t oled_panel = NULL;
+static char esp_ip_addr[32] = "";
+
 static void motor_move_to(int target_angle, int min_angle, int max_angle)
 {
     // Clamp target to range
@@ -227,6 +244,98 @@ static void motor_move_to(int target_angle, int min_angle, int max_angle)
     ESP_ERROR_CHECK(gptimer_start(motor_timer));
 }
 
+static void set_pixel(uint8_t *buf, int x, int y, bool on)
+{
+    if (x < 0 || x >= LCD_W || y < 0 || y >= LCD_H) return;
+    int idx = (y / 8) * LCD_W + x;
+    if (on) buf[idx] |=  (1 << (y % 8));
+    else    buf[idx] &= ~(1 << (y % 8));
+}
+
+static const uint8_t font5x7[][5] = {
+    {0x00,0x00,0x00,0x00,0x00}, {0x00,0x00,0x5F,0x00,0x00}, {0x00,0x07,0x00,0x07,0x00}, {0x14,0x7F,0x14,0x7F,0x14},
+    {0x24,0x2A,0x7F,0x2A,0x12}, {0x23,0x13,0x08,0x64,0x62}, {0x36,0x49,0x55,0x22,0x50}, {0x00,0x05,0x03,0x00,0x00},
+    {0x00,0x1C,0x22,0x41,0x00}, {0x00,0x41,0x22,0x1C,0x00}, {0x14,0x08,0x3E,0x08,0x14}, {0x08,0x08,0x3E,0x08,0x08},
+    {0x00,0x50,0x30,0x00,0x00}, {0x08,0x08,0x08,0x08,0x08}, {0x00,0x60,0x60,0x00,0x00}, {0x20,0x10,0x08,0x04,0x02},
+    {0x3E,0x51,0x49,0x45,0x3E}, {0x00,0x42,0x7F,0x40,0x00}, {0x42,0x61,0x51,0x49,0x46}, {0x21,0x41,0x45,0x4B,0x31},
+    {0x18,0x14,0x12,0x7F,0x10}, {0x27,0x45,0x45,0x45,0x39}, {0x3C,0x4A,0x49,0x49,0x30}, {0x01,0x71,0x09,0x05,0x03},
+    {0x36,0x49,0x49,0x49,0x36}, {0x06,0x49,0x49,0x29,0x1E}, {0x00,0x36,0x36,0x00,0x00}, {0x00,0x56,0x36,0x00,0x00},
+    {0x08,0x14,0x22,0x41,0x00}, {0x14,0x14,0x14,0x14,0x14}, {0x00,0x41,0x22,0x14,0x08}, {0x02,0x01,0x51,0x09,0x06},
+    {0x32,0x49,0x79,0x41,0x3E}, {0x7E,0x11,0x11,0x11,0x7E}, {0x7F,0x49,0x49,0x49,0x36}, {0x3E,0x41,0x41,0x41,0x22},
+    {0x7F,0x41,0x41,0x22,0x1C}, {0x7F,0x49,0x49,0x49,0x41}, {0x7F,0x09,0x09,0x09,0x01}, {0x3E,0x41,0x49,0x49,0x7A},
+    {0x7F,0x08,0x08,0x08,0x7F}, {0x00,0x41,0x7F,0x41,0x00}, {0x20,0x40,0x41,0x3F,0x01}, {0x7F,0x08,0x14,0x22,0x41},
+    {0x7F,0x40,0x40,0x40,0x40}, {0x7F,0x02,0x0C,0x02,0x7F}, {0x7F,0x04,0x08,0x10,0x7F}, {0x3E,0x41,0x41,0x41,0x3E},
+    {0x7F,0x09,0x09,0x09,0x06}, {0x3E,0x41,0x51,0x21,0x5E}, {0x7F,0x09,0x19,0x29,0x46}, {0x46,0x49,0x49,0x49,0x31},
+    {0x01,0x01,0x7F,0x01,0x01}, {0x3F,0x40,0x40,0x40,0x3F}, {0x1F,0x20,0x40,0x20,0x1F}, {0x3F,0x40,0x38,0x40,0x3F},
+    {0x63,0x14,0x08,0x14,0x63}, {0x07,0x08,0x70,0x08,0x07}, {0x61,0x51,0x49,0x45,0x43},
+};
+
+static void draw_char(uint8_t *buf, int x, int y, char c)
+{
+    if (c < 32 || c > 90) c = 32;
+    const uint8_t *g = font5x7[c - 32];
+    for (int col = 0; col < 5; col++)
+        for (int row = 0; row < 7; row++)
+            set_pixel(buf, x + col, y + row, (g[col] >> row) & 1);
+}
+
+static void draw_string(uint8_t *buf, int x, int y, const char *s)
+{
+    while (*s) { draw_char(buf, x, y, *s++); x += 6; }
+}
+
+static void oled_display(const char *l1, const char *l2, const char *l3)
+{
+    if (!oled_panel) return;
+    static uint8_t buf[LCD_BUF_SIZE];
+    memset(buf, 0, sizeof(buf));
+    if (l1) draw_string(buf, 1,  1, l1);
+    if (l2) draw_string(buf, 4, 12, l2);
+    if (l3) draw_string(buf, 16, 23, l3);
+    esp_lcd_panel_draw_bitmap(oled_panel, 0, 0, LCD_W, LCD_H, buf);
+}
+
+static void init_oled(void)
+{
+    i2c_master_bus_config_t bus_cfg = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = I2C_SDA,
+        .scl_io_num = I2C_SCL,
+        .glitch_ignore_cnt = 7,
+    };
+    i2c_master_bus_handle_t bus;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+
+    esp_lcd_panel_io_handle_t io;
+    esp_lcd_panel_io_i2c_config_t io_cfg = {
+        .dev_addr = I2C_ADDR,
+        .scl_speed_hz = 400000,
+        .control_phase_bytes = 1,
+        .dc_bit_offset = 6,
+        .lcd_cmd_bits = 8,
+        .lcd_param_bits = 8,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(bus, &io_cfg, &io));
+
+    esp_lcd_panel_dev_config_t panel_cfg = {
+        .bits_per_pixel = 1,
+        .reset_gpio_num = -1,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_ssd1306(io, &panel_cfg, &oled_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(oled_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(oled_panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(oled_panel, true));
+
+    static uint8_t blank[128 * 64 / 8];
+    memset(blank, 0, sizeof(blank));
+    esp_lcd_panel_set_gap(oled_panel, 0, 0);
+    esp_lcd_panel_draw_bitmap(oled_panel, 0, 0, 128, 64, blank);
+    esp_lcd_panel_set_gap(oled_panel, LCD_X_GAP, LCD_Y_GAP);
+    
+    ESP_LOGI(TAG, "OLED initialized");
+}
+
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -237,6 +346,16 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        snprintf(esp_ip_addr, sizeof(esp_ip_addr), IPSTR, IP2STR(&event->ip_info.ip));
+        
+        char *dot = strchr(esp_ip_addr, '.');
+        char line2[18] = {0}, line3[18] = {0};
+        if (dot) {
+            int first_part_len = dot - esp_ip_addr;
+            strncpy(line2, esp_ip_addr, first_part_len + 4);
+            snprintf(line3, sizeof(line3), "  %s", dot + 4);
+        }
+        oled_display("AIRSPEED", line2, line3);
     }
 }
 
@@ -259,8 +378,6 @@ static void wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 }
-
-static int log_socket = -1;
 
 static int wifi_log_vprintf(const char *fmt, va_list args)
 {
@@ -456,6 +573,8 @@ void app_main(void)
     esp_task_wdt_init(&wdt_config);
     
     motor_init();
+    init_oled();
+    oled_display("AIRSPEED", "CONNECTING", NULL);
     wifi_init();
     vTaskDelay(5000 / portTICK_PERIOD_MS);
     
