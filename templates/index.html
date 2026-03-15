@@ -353,17 +353,17 @@
                     <div class="slider-group">
                         <label>Angle (deg):</label>
                         <input type="number" id="cal-angle-motor-${motorId}" value="0" min="-3600" max="3600" onchange="updateGaugePreview(${motorId})">
-                        <button onclick="moveMotor(${motorId})" style="padding: 5px 10px; font-size: 11px;">Move</button>
+                        <button onclick="moveMotor.call(this, ${motorId})" style="padding: 5px 10px; font-size: 11px;">Move</button>
                     </div>
                     <div class="slider-group">
                         <label>X-Plane:</label>
                         <input type="number" id="cal-xplane-motor-${motorId}" value="0" onchange="updateGaugeFromXPlane(${motorId})">
-                        <button onclick="moveXPlane(${motorId})" style="padding: 5px 10px; font-size: 11px;">Move</button>
+                        <button onclick="moveXPlane.call(this, ${motorId})" style="padding: 5px 10px; font-size: 11px;">Move</button>
                     </div>
                     <div class="motor-buttons">
-                        <button onclick="rotateCW(${motorId})" style="background: #00aa00;">CW 10°</button>
-                        <button onclick="rotateCCW(${motorId})" style="background: #aa0000;">CCW 10°</button>
-                        <button onclick="zeroMotor(${motorId})" style="background: #666;">Zero</button>
+                        <button onclick="rotateCW.call(this, ${motorId})" style="background: #00aa00;">CW 10°</button>
+                        <button onclick="rotateCCW.call(this, ${motorId})" style="background: #aa0000;">CCW 10°</button>
+                        <button onclick="zeroMotor.call(this, ${motorId})" style="background: #666;">Zero</button>
                     </div>
                 </div>`;
             }
