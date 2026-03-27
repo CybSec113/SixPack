@@ -271,6 +271,26 @@
                 });
         }
 
+        function updateEncoderDisplay() {
+            fetch('/api/devices')
+                .then(r => r.json())
+                .then(devices => {
+                    const device = devices.find(d => d.id === 'ESP_Inputs');
+                    if (device && device.encoders && Object.keys(device.encoders).length > 0) {
+                        const html = Object.entries(device.encoders).map(([name, data]) => `
+                            <div class="encoder-item">
+                                <div class="encoder-name">${name}</div>
+                                <div class="encoder-value">${data.value !== undefined ? data.value : 'N/A'}</div>
+                                <div class="device-info">Button: ${data.button !== undefined ? data.button : 'N/A'}</div>
+                            </div>
+                        `).join('');
+                        document.getElementById('encoder-display').innerHTML = html;
+                    } else {
+                        document.getElementById('encoder-display').innerHTML = '<div class="device-info">No encoder events yet</div>';
+                    }
+                });
+        }
+
         function selectDevice(espId) {
             currentDevice = espId;
             
@@ -313,6 +333,7 @@
                                     document.querySelector('.controls').style.display = 'none';
                                     document.querySelector('.calibration').style.display = 'none';
                                     document.getElementById('encoder-display').classList.add('active');
+                                    updateEncoderDisplay();
                                 } else {
                                     document.querySelector('.controls').style.display = 'grid';
                                     document.querySelector('.calibration').style.display = 'block';
@@ -544,6 +565,11 @@
 
         updateDeviceList();
         setInterval(updateDeviceList, 1000);
+        setInterval(() => {
+            if (currentDevice === 'ESP_Inputs') {
+                updateEncoderDisplay();
+            }
+        }, 500);
     </script>
 </body>
 </html>

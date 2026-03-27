@@ -196,26 +196,8 @@ static bool motor_timer_callback(gptimer_handle_t timer, const gptimer_alarm_eve
     
     if (state->steps_remaining <= 0) {
         state->active = false;
-        // Accumulate position: add the delta we moved
-        int current_mod = (int)current_position[motor_id] % 360;
-        int delta = state->target_angle - current_mod;
-        if (delta > 180) delta -= 360;
-        else if (delta < -180) delta += 360;
-        
-        // Track rotation crossings for motor 0 (altitude)
-        if (motor_id == 0) {
-            int old_mod = (int)current_position[motor_id] % 360;
-            int new_pos = (int)current_position[motor_id] + delta;
-            int new_mod = new_pos % 360;
-            if (new_mod < 0) new_mod += 360;
-            
-            // Detect crossing 0/360
-            if (delta > 0 && new_mod < old_mod) rotations[0]++;  // Crossed forward
-            else if (delta < 0 && new_mod > old_mod) rotations[0]--;  // Crossed backward
-        }
-        
-        current_position[motor_id] += delta;
-        ESP_LOGI(TAG, "Motor %d reached target: %d° (cumulative: %d°, rotations: %d)", motor_id, state->target_angle, (int)current_position[motor_id], rotations[motor_id]);
+        current_position[motor_id] = state->target_angle;
+        ESP_LOGI(TAG, "Motor %d reached target: %d degrees (cumulative: %d degrees)", motor_id, state->target_angle, (int)current_position[motor_id]);
         return false;  // Stop timer
     }
     
@@ -293,27 +275,7 @@ static void motor_move_to(int motor_id, int target_angle, int min_angle, int max
     if (target_angle > max_angle) target_angle = max_angle;
     
     int current = (int)current_position[motor_id];
-    int current_mod = current % 360;
-    if (current_mod < 0) current_mod += 360;
-    
-    int diff = target_angle - current_mod;
-    
-    // For motor 0 (altitude), check if we should cross 0/360
-    if (motor_id == 0) {
-        // If diff suggests going backward > 180°, we should go forward with a rotation
-        if (diff < -180) {
-            diff += 360;
-        } else if (diff > 180) {
-            diff -= 360;
-        }
-    } else {
-        // Motor 1: normal wrap-around
-        if (diff > 180) {
-            diff -= 360;
-        } else if (diff < -180) {
-            diff += 360;
-        }
-    }
+    int diff = target_angle - current;
     
     if (diff == 0) {
         ESP_LOGI(TAG, "Motor %d already at target: %d°", motor_id, target_angle);
@@ -466,8 +428,13 @@ static void udp_receiver_task(void *pvParameters)
                     motor_id = 0;  // Default to motor 0 if not specified
                 }
                 int angle = value_to_angle(motor_id, value);
+                // For motor 0 (altitude), add offset based on which 1000-ft band
+                if (motor_id == 0) {
+                    int band = value / 1000;
+                    angle += band * 360;
+                }
                 ESP_LOGI(TAG, "Motor %d: Converted value %d to angle %d degrees", motor_id, value, angle);
-                motor_move_to(motor_id, angle, 0, 360);
+                motor_move_to(motor_id, angle, 0, 10000);
             } else {
                 ESP_LOGW(TAG, "Failed to parse value from: %s", &rx_buffer[6]);
             }
