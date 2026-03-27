@@ -99,12 +99,12 @@ static const cal_point_t calibration_motor1[5] = {
 static const int calibration_motor1_count = 5;
 
 // Motor 0 bounds: derived from calibration min/max values
-static int motor0_min_angle = -20;  // calibration_motor0[0].value
-static int motor0_max_angle = 20;   // calibration_motor0[4].value
+static int motor0_min_angle = 340;  // calibration_motor0[0].angle
+static int motor0_max_angle = 20;   // calibration_motor0[4].angle
 
 // Motor 1 bounds: derived from calibration min/max values
-static int motor1_min_angle = -18;  // calibration_motor1[0].value
-static int motor1_max_angle = 18;   // calibration_motor1[4].value
+static int motor1_min_angle = 342;  // calibration_motor1[0].angle
+static int motor1_max_angle = 18;   // calibration_motor1[4].angle
 
 static int value_to_angle(int motor_id, int value)
 {
@@ -244,11 +244,31 @@ static void motor_init(void)
 
 static void motor_move_to(int motor_id, int target_angle, int min_angle, int max_angle)
 {
-    if (target_angle < min_angle) target_angle = min_angle;
-    if (target_angle > max_angle) target_angle = max_angle;
+    // Handle wrapped angle ranges (e.g., 340-20 for turn coordinator)
+    // If min > max, it's a wrapped range crossing 0°
+    if (min_angle > max_angle) {
+        // Wrapped range: valid angles are [min, 360) OR [0, max]
+        if (target_angle < min_angle && target_angle > max_angle) {
+            // Outside valid range - clamp to nearest boundary
+            int dist_to_min = min_angle - target_angle;
+            int dist_to_max = target_angle - max_angle;
+            target_angle = (dist_to_min < dist_to_max) ? min_angle : max_angle;
+        }
+    } else {
+        // Normal range: clamp to [min, max]
+        if (target_angle < min_angle) target_angle = min_angle;
+        if (target_angle > max_angle) target_angle = max_angle;
+    }
     
     int current = (int)current_position[motor_id];
     int diff = target_angle - current;
+    
+    // Take shortest path on circular dial
+    if (diff > 180) {
+        diff -= 360;
+    } else if (diff < -180) {
+        diff += 360;
+    }
     
     if (diff == 0) {
         ESP_LOGI(TAG, "Motor %d already at target: %d°", motor_id, target_angle);

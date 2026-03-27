@@ -491,7 +491,7 @@
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: angle, min_angle: -3600, max_angle: 3600 })
+                body: JSON.stringify({ esp_id: currentDevice, motor_id: motorId, angle: angle, min_angle: 0, max_angle: 360 })
             });
         }
 
@@ -529,7 +529,7 @@
             const input = document.getElementById(`cal-angle-motor-${motorId}`);
             let angle = parseFloat(input.value) + 10;
             input.value = angle;
-            input.oninput();
+            updateGaugePreview(motorId);
             moveMotor(motorId);
         }
 
@@ -537,7 +537,7 @@
             const input = document.getElementById(`cal-angle-motor-${motorId}`);
             let angle = parseFloat(input.value) - 10;
             input.value = angle;
-            input.oninput();
+            updateGaugePreview(motorId);
             moveMotor(motorId);
         }
 
